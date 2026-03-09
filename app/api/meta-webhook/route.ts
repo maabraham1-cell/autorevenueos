@@ -124,30 +124,10 @@ async function processMessagingEvent(
   }
 
   if (!business) {
-    console.warn("[meta-webhook] Falling back to first business for page routing", { pageId });
-    console.log("no business matched meta_page_id, using fallback");
-    const { data: firstBusiness, error: firstError } = await supabase
-      .from("businesses")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
-
-    if (firstError || !firstBusiness) {
-      console.error(
-        "[meta-webhook] No business or error during fallback:",
-        firstError?.message ?? "No business found"
-      );
-      return;
-    }
-    business = firstBusiness;
-    const fallbackBusiness = firstBusiness;
-    if (fallbackBusiness) {
-      console.log(
-        "fallback business:",
-        fallbackBusiness.name,
-        (fallbackBusiness as any).meta_page_id
-      );
-    }
+    console.warn("[meta-webhook] no business matched meta_page_id, skipping reply", {
+      pageId: normalizedPageId,
+    });
+    return;
   }
 
   // Create or reuse contact (by business_id + phone/sender id).
