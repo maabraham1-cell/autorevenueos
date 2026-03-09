@@ -92,6 +92,7 @@ async function processMessagingEvent(
     (typeof (entry as { id?: unknown }).id === "string"
       ? ((entry as { id?: string }).id as string)
       : "");
+  console.log("incomingPageId:", pageId);
 
   // Prefer routing by pageId (Meta page / IG account) for multi-business support.
   // This requires a businesses.meta_page_id column to exist and be populated.
@@ -99,6 +100,7 @@ async function processMessagingEvent(
   let business: any | null = null;
 
   if (pageId) {
+    console.log("lookup meta_page_id:", pageId);
     const { data: byPage, error: byPageError } = await supabase
       .from("businesses")
       .select("*")
@@ -112,11 +114,13 @@ async function processMessagingEvent(
       });
     } else if (byPage) {
       business = byPage;
+      console.log("matched business:", business?.name, business?.meta_page_id);
     }
   }
 
   if (!business) {
     console.warn("[meta-webhook] Falling back to first business for page routing", { pageId });
+    console.log("fallback triggered, no business matched meta_page_id");
     const { data: firstBusiness, error: firstError } = await supabase
       .from("businesses")
       .select("*")
