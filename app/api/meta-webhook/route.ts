@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  console.log("META WEBHOOK HIT");
+  console.log("META WEBHOOK HIT", new Date().toISOString());
   // Always return 200 quickly so Meta does not retry; process async and log errors.
   try {
     const body = await request.json();
@@ -84,15 +86,51 @@ async function processMessagingEvent(
     mid: message.mid,
   };
 
-  const { data: business, error: businessError } = await supabase
-    .from("businesses")
-    .select("*")
-    .limit(1)
-    .maybeSingle();
+  // Derive the Meta page / account id for routing. For Messenger page webhooks this is typically the recipient id.
+  const pageId =
+    recipientId ||
+    (typeof (entry as { id?: unknown }).id === "string"
+      ? ((entry as { id?: string }).id as string)
+      : "");
 
-  if (businessError || !business) {
-    console.error("[meta-webhook] No business or error:", businessError?.message ?? "No business found");
-    return;
+  // Prefer routing by pageId (Meta page / IG account) for multi-business support.
+  // This requires a businesses.meta_page_id column to exist and be populated.
+  // For MVP testing we fall back to the first business when no meta_page_id match is found.
+  let business: any | null = null;
+
+  if (pageId) {
+    const { data: byPage, error: byPageError } = await supabase
+      .from("businesses")
+      .select("*")
+      .eq("meta_page_id", pageId)
+      .limit(1)
+      .maybeSingle();
+
+    if (byPageError) {
+      console.error("[meta-webhook] Business lookup by meta_page_id failed:", byPageError.message, {
+        pageId,
+      });
+    } else if (byPage) {
+      business = byPage;
+    }
+  }
+
+  if (!business) {
+    console.warn("[meta-webhook] Falling back to first business for page routing", { pageId });
+    const { data: firstBusiness, error: firstError } = await supabase
+      .from("businesses")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
+
+    if (firstError || !firstBusiness) {
+      console.error(
+        "[meta-webhook] No business or error during fallback:",
+        firstError?.message ?? "No business found"
+      );
+      return;
+    }
+    business = firstBusiness;
   }
 
   // Create or reuse contact (by business_id + phone/sender id).
@@ -139,6 +177,7 @@ async function processMessagingEvent(
     return;
   }
 
+  // Log the current inbound message.
   const { error: messageError } = await supabase.from("messages").insert({
     business_id: business.id,
     contact_id: contact.id,
@@ -147,19 +186,92 @@ async function processMessagingEvent(
   });
   if (messageError) {
     console.error("[meta-webhook] Message insert error:", messageError.message);
+  } else {
+    console.log("[meta-webhook] logged inbound message", {
+      businessId: business.id,
+      contactId: contact.id,
+      channel: "meta",
+      direction: "inbound",
+    });
   }
 
+  // Check whether an outbound auto-reply already existed BEFORE this inbound message.
+  const { data: priorOutbound, error: priorOutboundError } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("business_id", business.id)
+    .eq("contact_id", contact.id)
+    .eq("channel", "meta")
+    .eq("direction", "outbound")
+    .limit(1)
+    .maybeSingle();
+  const hadPriorOutgoingReply = !!priorOutbound;
+  if (priorOutboundError) {
+    console.error("[meta-webhook] priorOutbound lookup error:", priorOutboundError.message);
+  }
+
+  // Count inbound messages AFTER logging this one. First inbound (count === 1) should NOT create a recovery.
+  const { count: inboundCount, error: inboundCountError } = await supabase
+    .from("messages")
+    .select("*", { count: "exact", head: true })
+    .eq("business_id", business.id)
+    .eq("contact_id", contact.id)
+    .eq("channel", "meta")
+    .eq("direction", "inbound");
+  if (inboundCountError) {
+    console.error("[meta-webhook] inboundCount lookup error:", inboundCountError.message);
+  }
+
+  const { data: existingRecovery, error: existingRecoveryError } = await supabase
+    .from("recoveries")
+    .select("id")
+    .eq("business_id", business.id)
+    .eq("contact_id", contact.id)
+    .limit(1)
+    .maybeSingle();
+  if (existingRecoveryError) {
+    console.error("[meta-webhook] Existing recovery lookup error:", existingRecoveryError.message);
+  }
+
+  console.log("hadPriorOutgoingReply:", hadPriorOutgoingReply);
+  console.log("inboundCount:", inboundCount ?? null);
+  console.log("existingRecovery:", existingRecovery ?? null);
+
   // Auto-reply (plain text only). Meta replies are subject to platform rules (e.g. 24-hour window).
+  // First inbound message triggers an auto-reply only; later inbound messages after an outbound reply
+  // are treated as a recovered lead (see recovery logic below).
   // If reply fails (e.g. placeholder META_PAGE_ACCESS_TOKEN), we still return 200 and have already stored inbound data.
-  const replyText = `Hi, thanks for your message to ${business.name}. You can book here: ${business.booking_link ?? "https://example.com"}`;
+  const replyText = `Hi, thanks for messaging ${business.name}. You can book here: ${
+    business.booking_link ?? "https://example.com"
+  }`;
   try {
     await sendMetaReply({ recipientId: senderId, text: replyText });
+    // Log the outbound auto-reply in messages so we can detect future re-engagement.
+    const { error: outboundMessageError } = await supabase.from("messages").insert({
+      business_id: business.id,
+      contact_id: contact.id,
+      channel: "meta",
+      direction: "outbound",
+      body: replyText,
+    });
+    if (outboundMessageError) {
+      console.error("[meta-webhook] Outbound message insert error:", outboundMessageError.message);
+    }
   } catch (e) {
     console.error("[meta-webhook] sendMetaReply error:", e);
   }
 
-  // MVP recovery: log when customer sends a meaningful message (non-empty text).
-  if (messageText.trim().length > 0 && evt?.id) {
+  // Recovery: only when the customer meaningfully re-engages AFTER we have already sent an auto-reply.
+  // Recovery is only counted when a customer sends a second message, which indicates re-engagement
+  // after the auto-reply. First message = auto-reply only; second or later inbound + no existing
+  // recovery = recovered lead.
+  if (
+    messageText.trim().length > 0 &&
+    evt?.id &&
+    hadPriorOutgoingReply &&
+    (inboundCount ?? 0) >= 2 &&
+    !existingRecovery
+  ) {
     const { error: recoveryError } = await supabase.from("recoveries").insert({
       business_id: business.id,
       contact_id: contact.id,
@@ -168,6 +280,10 @@ async function processMessagingEvent(
     });
     if (recoveryError) {
       console.error("[meta-webhook] Recovery insert error:", recoveryError.message);
+    } else {
+      console.log("[meta-webhook] recovery created for meta engagement");
     }
+  } else {
+    console.log("[meta-webhook] recovery not created (conditions not met)");
   }
 }
