@@ -92,35 +92,40 @@ async function processMessagingEvent(
     (typeof (entry as { id?: unknown }).id === "string"
       ? ((entry as { id?: string }).id as string)
       : "");
-  console.log("incomingPageId:", pageId);
+  console.log("incomingPageId raw:", pageId);
+  console.log("incomingPageId type:", typeof pageId);
+  const normalizedPageId = String(pageId ?? "").trim();
+  console.log("incomingPageId normalized:", normalizedPageId);
 
   // Prefer routing by pageId (Meta page / IG account) for multi-business support.
   // This requires a businesses.meta_page_id column to exist and be populated.
   // For MVP testing we fall back to the first business when no meta_page_id match is found.
   let business: any | null = null;
 
-  if (pageId) {
-    console.log("lookup meta_page_id:", pageId);
+  if (normalizedPageId) {
     const { data: byPage, error: byPageError } = await supabase
       .from("businesses")
       .select("*")
-      .eq("meta_page_id", pageId)
+      .eq("meta_page_id", normalizedPageId)
       .limit(1)
       .maybeSingle();
 
     if (byPageError) {
       console.error("[meta-webhook] Business lookup by meta_page_id failed:", byPageError.message, {
-        pageId,
+        pageId: normalizedPageId,
       });
     } else if (byPage) {
       business = byPage;
-      console.log("matched business:", business?.name, business?.meta_page_id);
+      console.log("matched business:", business.name, (business as any).meta_page_id);
+      console.log("matched business row:", business);
+    } else {
+      console.log("no business matched normalizedPageId");
     }
   }
 
   if (!business) {
     console.warn("[meta-webhook] Falling back to first business for page routing", { pageId });
-    console.log("fallback triggered, no business matched meta_page_id");
+    console.log("no business matched meta_page_id, using fallback");
     const { data: firstBusiness, error: firstError } = await supabase
       .from("businesses")
       .select("*")
@@ -135,6 +140,14 @@ async function processMessagingEvent(
       return;
     }
     business = firstBusiness;
+    const fallbackBusiness = firstBusiness;
+    if (fallbackBusiness) {
+      console.log(
+        "fallback business:",
+        fallbackBusiness.name,
+        (fallbackBusiness as any).meta_page_id
+      );
+    }
   }
 
   // Create or reuse contact (by business_id + phone/sender id).
