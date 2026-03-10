@@ -21,9 +21,17 @@ export async function GET() {
         estimated_revenue: 0,
         cost: 0,
         roi: 0,
+        average_booking_value: 60,
         recent_recoveries: [],
+        pipeline: [],
       });
     }
+
+    const averageBookingValue =
+      typeof (business as any).average_booking_value === "number" &&
+      (business as any).average_booking_value > 0
+        ? (business as any).average_booking_value
+        : 60;
 
     // recovered_leads = count of recoveries for this business
     const { count: recovered_leads, error: recoveriesCountError } = await supabase
@@ -36,7 +44,7 @@ export async function GET() {
     }
 
     const recovered = recovered_leads ?? 0;
-    const estimated_revenue = recovered * 60;
+    const estimated_revenue = recovered * averageBookingValue;
     const cost = recovered * 3;
     const roi = cost > 0 ? estimated_revenue / cost : 0;
 
@@ -80,6 +88,7 @@ export async function GET() {
           id,
           created_at,
           contact_id,
+          status,
           event_id,
           events!inner (
             source_channel,
@@ -116,12 +125,6 @@ export async function GET() {
       }
     }
 
-    const averageBookingValue =
-      typeof (business as any).average_booking_value === "number" &&
-      (business as any).average_booking_value > 0
-        ? (business as any).average_booking_value
-        : 60;
-
     const pipeline =
       pipelineRecoveriesRaw?.map((rec) => {
         const channel =
@@ -155,17 +158,25 @@ export async function GET() {
           normalizedText.includes("confirmed") ||
           normalizedText.includes("booked");
 
-        let status: "Recovered" | "In Conversation" | "Booked" = "Recovered";
+        let autoStatus: "Recovered" | "In Conversation" | "Booked" = "Recovered";
         if (hasLaterMessages) {
-          status = "In Conversation";
+          autoStatus = "In Conversation";
         }
         if (latestText && isBooked) {
-          status = "Booked";
+          autoStatus = "Booked";
         }
+
+        const manualStatus = (rec as any).status as string | null;
+        const knownManual = ["Recovered", "In Conversation", "Follow Up", "Booked", "Lost"];
+        const status = manualStatus && knownManual.includes(manualStatus) ? manualStatus : autoStatus;
 
         let proof_label: string;
         if (status === "Booked") {
           proof_label = "Likely booked";
+        } else if (status === "Follow Up") {
+          proof_label = "Needs follow-up";
+        } else if (status === "Lost") {
+          proof_label = "Marked as lost";
         } else if (hasLaterMessages) {
           proof_label = "Conversation continued";
         } else {
@@ -188,6 +199,7 @@ export async function GET() {
       estimated_revenue,
       cost,
       roi,
+      average_booking_value: averageBookingValue,
       recent_recoveries,
       pipeline,
     });
@@ -199,6 +211,7 @@ export async function GET() {
         estimated_revenue: 0,
         cost: 0,
         roi: 0,
+        average_booking_value: 60,
         recent_recoveries: [],
         pipeline: [],
       },

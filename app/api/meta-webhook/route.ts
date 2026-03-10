@@ -238,9 +238,29 @@ async function processMessagingEvent(
   // First inbound message triggers an auto-reply only; later inbound messages after an outbound reply
   // are treated as a recovered lead (see recovery logic below).
   // If reply fails (e.g. placeholder META_PAGE_ACCESS_TOKEN), we still return 200 and have already stored inbound data.
-  const replyText = `Hi, thanks for messaging ${business.name}. You can book here: ${
-    business.booking_link ?? "https://example.com"
-  }`;
+  const businessName: string =
+    typeof business.name === "string" && business.name.trim().length > 0
+      ? business.name.trim()
+      : "your business";
+  const bookingLinkValue =
+    typeof business.booking_link === "string" && business.booking_link.trim().length > 0
+      ? business.booking_link.trim()
+      : "https://example.com";
+
+  const defaultTemplate =
+    "Hi, thanks for messaging {business_name}. You can book here: {booking_link}";
+
+  const storedTemplate =
+    typeof (business as any).auto_reply_template === "string" &&
+    (business as any).auto_reply_template.trim().length > 0
+      ? (business as any).auto_reply_template.trim()
+      : null;
+
+  const templateToUse = storedTemplate ?? defaultTemplate;
+
+  const replyText = templateToUse
+    .replace(/{business_name}/g, businessName)
+    .replace(/{booking_link}/g, bookingLinkValue);
   try {
     await sendMetaReply({ recipientId: senderId, text: replyText });
     // Log the outbound auto-reply in messages so we can detect future re-engagement.

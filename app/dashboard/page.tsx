@@ -1,12 +1,23 @@
- 'use client';
+'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import {
+  StatusBadge,
+  MetricCard,
+  SectionHeader,
+  ChannelBadge,
+  ProofChip,
+  PipelineCounter,
+  EmptyState,
+} from '@/components/ui';
 
 type DashboardResponse = {
   recovered_leads: number;
   estimated_revenue: number;
   cost: number;
   roi: number;
+  average_booking_value?: number;
   recent_recoveries: {
     id: string;
     created_at: string;
@@ -87,26 +98,40 @@ export default function DashboardPage() {
   const estimatedRevenue = data?.estimated_revenue ?? 0;
   const cost = data?.cost ?? 0;
   const roi = data?.roi ?? 0;
+  const averageBookingValue = data?.average_booking_value ?? 60;
   const pipeline = data?.pipeline ?? [];
+
+  const estimatedBookings = averageBookingValue > 0 ? Math.round(estimatedRevenue / averageBookingValue) : 0;
 
   const recoveredCount = pipeline.filter((p) => p.status === 'Recovered').length;
   const inConversationCount = pipeline.filter((p) => p.status === 'In Conversation').length;
+  const followUpCount = pipeline.filter((p) => p.status === 'Follow Up').length;
   const bookedCount = pipeline.filter((p) => p.status === 'Booked').length;
+  const lostCount = pipeline.filter((p) => p.status === 'Lost').length;
+
+  const router = useRouter();
+  const openInboxConversation = (contactId: string | null, channel: string | null) => {
+    if (!contactId || !channel) return;
+    router.push(`/inbox?contact=${contactId}&channel=${channel}`);
+  };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] px-4 py-10 text-[#0F172A]">
+    <div className="px-4 py-10 text-[#0F172A]">
       <div className="mx-auto flex max-w-6xl flex-col">
         <header className="animate-fade-in-up flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-[#0F172A] sm:text-4xl">
-              AutoRevenueOS Dashboard
+            <h1 className="text-3xl font-bold tracking-tight text-[#0F172A] sm:text-4xl">
+              Dashboard
             </h1>
             <p className="mt-2 text-sm text-[#475569]">
-              Track how missed enquiries turn into recovered revenue, conversations, and bookings.
+              Track recovered revenue, recovered enquiries, and bookings across your pipeline.
+            </p>
+            <p className="mt-1 text-xs text-[#94A3B8]">
+              Messenger Connected • Recovery Engine Active • Webhooks Receiving Messages
             </p>
           </div>
           {loading && (
-            <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-wide text-[#64748B] shadow-sm">
+            <span className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#64748B] shadow-[var(--card-shadow)]">
               Loading…
             </span>
           )}
@@ -118,16 +143,33 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <section className="animate-fade-in-up mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* KPI cards */}
+        <section className="animate-fade-in-up mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Primary KPI: Estimated Recovered Revenue - revenue signal (green) */}
+          <div className="relative overflow-hidden rounded-[14px] border border-[#BBF7D0] bg-gradient-to-br from-white via-[#F0FDF4]/30 to-[#DCFCE7]/50 p-6 shadow-[var(--card-shadow)] transition-all duration-200 ease-out hover:shadow-[var(--card-shadow-hover)] sm:col-span-2 sm:p-7 ring-1 ring-[#22C55E]/20">
+            <div className="absolute top-0 right-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-[#22C55E]/8" />
+            <div className="relative">
+              <div className="mb-3 h-2 w-14 rounded-full bg-gradient-to-r from-[#22C55E] to-[#16A34A]" />
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#166534]">
+                Estimated Recovered Revenue
+              </p>
+              <p className="mt-4 text-4xl font-bold tracking-tight text-[#166534] sm:text-5xl">
+                {formatMoney(estimatedRevenue)}
+              </p>
+              <p className="mt-3 text-sm text-[#64748B]">
+                Value recovered from missed enquiries
+              </p>
+              {estimatedBookings > 0 && (
+                <p className="mt-2 text-sm font-semibold text-[#475569]">
+                  ≈ {estimatedBookings} additional booking{estimatedBookings !== 1 ? 's' : ''}
+                </p>
+              )}
+            </div>
+          </div>
           <MetricCard
             label="Recovered Leads"
             value={recoveredLeads.toString()}
             subtitle="Total recovery events for this business"
-          />
-          <MetricCard
-            label="Estimated Revenue Recovered"
-            value={formatMoney(estimatedRevenue)}
-            subtitle="Assuming £60 per recovered lead"
           />
           <MetricCard
             label="AutoRevenueOS Cost"
@@ -137,24 +179,21 @@ export default function DashboardPage() {
           <MetricCard
             label="ROI"
             value={formatRoi(roi)}
-            subtitle="Estimated revenue ÷ cost"
+            subtitle="Estimated recovered revenue ÷ cost"
           />
         </section>
 
-        <section className="animate-fade-in-up mt-10 rounded-2xl border border-[#E5E7EB] bg-white/90 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_10px_24px_rgba(15,23,42,0.08)] sm:p-6">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold text-[#0F172A]">
-                Recent Recoveries
-              </h2>
-              <p className="mt-1 text-xs text-[#64748B]">
-                Latest leads AutoRevenueOS has brought back into your funnel.
+        {/* Recent Recoveries */}
+        <section className="card-base animate-fade-in-up mt-12 rounded-[14px] p-4 sm:p-6">
+          <SectionHeader
+            title="Recent Recoveries"
+            description="Latest recovered enquiries AutoRevenueOS has brought back into your funnel."
+            rightContent={
+              <p className="text-xs text-[#94A3B8]">
+                Showing the last {data?.recent_recoveries.length ?? 0} recoveries.
               </p>
-            </div>
-            <p className="text-xs text-[#94A3B8]">
-              Showing the last {data?.recent_recoveries.length ?? 0} recoveries.
-            </p>
-          </div>
+            }
+          />
 
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left text-sm">
@@ -174,11 +213,16 @@ export default function DashboardPage() {
                           ? 'Messenger user'
                           : `Customer #${String(idx + 1)}`
                         : 'Unknown contact';
+                    const canOpenInbox = r.contact_id != null && r.channel != null;
 
                     return (
                       <tr
                         key={r.id}
-                        className="border-b border-zinc-100 last:border-0 hover:bg-[#F9FAFB] odd:bg-white even:bg-[#F9FAFB]/60"
+                        onClick={() => canOpenInbox && openInboxConversation(r.contact_id, r.channel)}
+                        className={`border-b border-[#E5E7EB] last:border-0 odd:bg-white even:bg-[#F9FAFB]/60 ${
+                          canOpenInbox ? 'cursor-pointer hover:bg-[#EFF6FF]/70' : 'hover:bg-[#F9FAFB]'
+                        }`}
+                        title={canOpenInbox ? 'Open in Inbox' : undefined}
                       >
                         <td className="py-2.5 pr-4 pl-3 text-[#0F172A]">
                           {formatDate(r.created_at)}
@@ -186,8 +230,8 @@ export default function DashboardPage() {
                         <td className="py-2.5 pr-4 text-[#475569]">
                           {displayContact}
                         </td>
-                        <td className="py-2.5 pr-4 text-[#475569]">
-                          {r.channel ?? 'Unknown'}
+                        <td className="py-2.5 pr-4">
+                          <ChannelBadge channel={r.channel} />
                         </td>
                       </tr>
                     );
@@ -200,7 +244,7 @@ export default function DashboardPage() {
                     >
                       {loading
                         ? 'Loading recoveries…'
-                        : 'No recoveries recorded yet for this business.'}
+                        : 'No recovered enquiries yet.'}
                     </td>
                   </tr>
                 )}
@@ -209,32 +253,31 @@ export default function DashboardPage() {
           </div>
         </section>
 
-        <section className="animate-fade-in-up mt-10 border-t border-[#E5E7EB] pt-8">
-          <div className="rounded-2xl border border-[#E5E7EB] bg-white/80 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_10px_24px_rgba(15,23,42,0.08)] sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-zinc-900">
-                  Recovered Revenue Pipeline
-                </h2>
-                <p className="mt-1 text-xs text-zinc-500">
-                  See how recovered enquiries progress from reply to confirmed bookings.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <PipelineCounter label="Recovered" value={recoveredCount} tone="neutral" />
-                <PipelineCounter label="In Conversation" value={inConversationCount} tone="info" />
-                <PipelineCounter label="Booked" value={bookedCount} tone="success" />
-              </div>
-            </div>
+        {/* Recovered Revenue Pipeline */}
+        <section className="animate-fade-in-up mt-12 border-t border-[#E5E7EB] pt-12">
+          <div className="card-base rounded-[14px] p-4 sm:p-6">
+            <SectionHeader
+              title="Recovered Revenue Pipeline"
+              description="Track recovered enquiries from reply to confirmed bookings."
+                rightContent={
+                <div className="flex flex-wrap gap-2">
+                  <PipelineCounter label="Recovered" value={recoveredCount} tone="neutral" />
+                  <PipelineCounter label="In Conversation" value={inConversationCount} tone="info" />
+                  <PipelineCounter label="Follow Up" value={followUpCount} tone="warning" />
+                  <PipelineCounter label="Booked" value={bookedCount} tone="success" />
+                  <PipelineCounter label="Lost" value={lostCount} tone="error" />
+                </div>
+              }
+            />
 
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-200 bg-zinc-50/60 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  <tr className="border-b border-[#E5E7EB] bg-[#F8FAFC] text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
                     <th className="py-2.5 pr-4 pl-3">Contact</th>
                     <th className="py-2.5 pr-4">Channel</th>
                     <th className="py-2.5 pr-4">Status</th>
-                    <th className="py-2.5 pr-4">Est. Value</th>
+                    <th className="py-2.5 pr-4">Est. Revenue</th>
                     <th className="py-2.5 pr-4">Proof</th>
                     <th className="py-2.5 pr-4 w-[260px]">Latest Message</th>
                     <th className="py-2.5 pr-4">Recovery Date</th>
@@ -250,14 +293,19 @@ export default function DashboardPage() {
                             : `Customer #${String(idx + 1)}`
                           : 'Unknown contact';
 
+                      const canOpenInbox = p.contact_id != null && p.channel != null;
                       return (
                         <tr
                           key={`${p.contact_id ?? 'unknown'}-${p.created_at}`}
-                          className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/80 odd:bg-white even:bg-[#F9FAFB]/60"
+                          onClick={() => canOpenInbox && openInboxConversation(p.contact_id, p.channel)}
+                          className={`border-b border-[#E5E7EB] last:border-0 transition-colors odd:bg-white even:bg-[#F9FAFB]/50 ${
+                            canOpenInbox ? 'cursor-pointer hover:bg-[#EFF6FF]/70' : 'hover:bg-[#F8FAFC]'
+                          }`}
+                          title={canOpenInbox ? 'Open in Inbox' : undefined}
                         >
-                          <td className="py-2.5 pr-4 pl-3 text-zinc-900">
+                          <td className="py-2.5 pr-4 pl-3 text-[#0F172A]">
                             <span className="inline-flex items-center gap-1.5">
-                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-100 text-[11px] font-medium text-zinc-600">
+                              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#F1F5F9] text-[11px] font-medium text-[#64748B]">
                                 {displayContact.slice(0, 2).toUpperCase()}
                               </span>
                               <span className="text-sm font-medium">
@@ -265,29 +313,29 @@ export default function DashboardPage() {
                               </span>
                             </span>
                           </td>
-                          <td className="py-2.5 pr-4 text-xs font-medium uppercase tracking-wide text-zinc-600">
-                            {p.channel ?? 'Unknown'}
+                          <td className="py-2.5 pr-4">
+                            <ChannelBadge channel={p.channel} />
                           </td>
                           <td className="py-2.5 pr-4">
                             <StatusBadge status={p.status} />
                           </td>
-                          <td className="py-2.5 pr-4 text-zinc-900">
-                            {formatMoney(p.estimated_value)}
+                          <td className="py-2.5 pr-4">
+                            <span className="font-semibold text-[#166534]">{formatMoney(p.estimated_value)}</span>
                           </td>
-                          <td className="py-2.5 pr-4 text-xs text-zinc-600">
+                          <td className="py-2.5 pr-4">
                             <ProofChip label={p.proof_label} status={p.status} />
                           </td>
                           <td className="py-2.5 pr-4 align-top">
                             <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[#94A3B8]">
                               Latest Message
                             </p>
-                            <p className="max-w-xs text-sm text-[#475569]">
+                          <p className="max-w-xs text-sm text-[#475569] truncate-2-lines">
                               {p.latest_message
                                 ? `“${p.latest_message}”`
                                 : 'No message preview available'}
                             </p>
                           </td>
-                          <td className="py-2.5 pr-4 text-xs text-zinc-600">
+                          <td className="py-2.5 pr-4 text-xs text-[#64748B]">
                             {formatDate(p.created_at)}
                           </td>
                         </tr>
@@ -297,7 +345,7 @@ export default function DashboardPage() {
                     <tr>
                       <td
                         colSpan={7}
-                        className="py-8 text-center text-sm text-zinc-500"
+                        className="py-8 text-center text-sm text-[#94A3B8]"
                       >
                         {loading
                           ? 'Building recovered revenue pipeline…'
@@ -315,93 +363,3 @@ export default function DashboardPage() {
   );
 }
 
-type MetricCardProps = {
-  label: string;
-  value: string;
-  subtitle?: string;
-};
-
-function MetricCard({ label, value, subtitle }: MetricCardProps) {
-  return (
-    <div className="flex flex-col justify-between rounded-2xl border border-[#E5E7EB] bg-white/95 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06)] transition-transform transition-shadow duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(15,23,42,0.08),0_16px_32px_rgba(15,23,42,0.10)] sm:p-6">
-      <div>
-        <div className="mb-3 h-1 w-10 rounded-full bg-gradient-to-r from-[#3B82F6] to-[#1E3A8A]" />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748B]">
-          {label}
-        </p>
-        <p className="mt-3 text-2xl font-semibold tracking-tight text-[#0F172A] sm:text-3xl">
-          {value}
-        </p>
-      </div>
-      {subtitle && (
-        <p className="mt-3 text-xs text-[#94A3B8]">
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-}
-
-type PipelineCounterProps = {
-  label: string;
-  value: number;
-  tone?: 'neutral' | 'info' | 'success';
-};
-
-function PipelineCounter({ label, value, tone = 'neutral' }: PipelineCounterProps) {
-  const toneClasses: Record<string, string> = {
-    neutral: 'border-zinc-200 bg-white text-zinc-800',
-    info: 'border-sky-100 bg-sky-50 text-sky-800',
-    success: 'border-emerald-100 bg-emerald-50 text-emerald-800',
-  };
-
-  return (
-    <div
-      className={`flex items-center gap-2 rounded-full border px-3 py-1 ${toneClasses[tone]}`}
-    >
-      <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-        {label}
-      </span>
-      <span className="text-sm font-semibold text-zinc-900">{value}</span>
-    </div>
-  );
-}
-
-type StatusBadgeProps = {
-  status: string;
-};
-
-function StatusBadge({ status }: StatusBadgeProps) {
-  const base =
-    'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border';
-  let colors =
-    'bg-[#F1F5F9] text-[#475569] border-[#E5E7EB]';
-
-  if (status === 'Booked') {
-    colors = 'bg-[#DCFCE7] text-[#166534] border-[#BBF7D0]';
-  } else if (status === 'In Conversation') {
-    colors = 'bg-[#DBEAFE] text-[#1D4ED8] border-[#BFDBFE]';
-  }
-
-  return <span className={`${base} ${colors}`}>{status}</span>;
-}
-
-type ProofChipProps = {
-  label: string;
-  status: string;
-};
-
-function ProofChip({ label, status }: ProofChipProps) {
-  const base =
-    'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border';
-  let colors =
-    'bg-[#F8FAFC] text-[#64748B] border-[#E5E7EB]';
-
-  if (status === 'Booked') {
-    colors = 'bg-[#FFFBEB] text-[#D97706] border-[#FED7AA]';
-  } else if (status === 'In Conversation') {
-    colors = 'bg-[#EEF2FF] text-[#4F46E5] border-[#C7D2FE]';
-  }
-
-  return <span className={`${base} ${colors}`}>{label}</span>;
-}

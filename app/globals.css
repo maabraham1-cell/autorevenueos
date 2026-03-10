@@ -1,8 +1,24 @@
 @import "tailwindcss";
 
+/* AutoRevenueOS design system tokens */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --card-surface: #FFFFFF;
+  --border: #E5E7EB;
+  --primary-text: #0F172A;
+  --secondary-text: #475569;
+  --muted-text: #94A3B8;
+  /* Brand */
+  --brand-primary: #1E3A8A;
+  --brand-secondary: #3B82F6;
+  /* Status palette */
+  --revenue-success: #22C55E;
+  --follow-up-amber: #D97706;
+  --loss-error: #DC2626;
+  /* Card shadows */
+  --card-shadow: 0 1px 2px rgba(15,23,42,0.05), 0 10px 24px rgba(15,23,42,0.08);
+  --card-shadow-hover: 0 6px 16px rgba(15,23,42,0.10), 0 16px 40px rgba(15,23,42,0.12);
 }
 
 @theme inline {
@@ -12,19 +28,26 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
+/* Card base - shared across Dashboard, Inbox, Recoveries */
+.card-base {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card-surface);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card-base:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+/* Staggered fade-in for sections */
 @keyframes fade-in-up {
   0% {
     opacity: 0;
@@ -38,4 +61,16 @@ body {
 
 .animate-fade-in-up {
   animation: fade-in-up 0.4s ease-out both;
+}
+
+.animate-fade-in-up-delay-1 { animation-delay: 0.05s; }
+.animate-fade-in-up-delay-2 { animation-delay: 0.1s; }
+.animate-fade-in-up-delay-3 { animation-delay: 0.15s; }
+.animate-fade-in-up-delay-4 { animation-delay: 0.2s; }
+
+.truncate-2-lines {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
