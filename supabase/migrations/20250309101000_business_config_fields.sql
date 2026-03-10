@@ -19,3 +19,17 @@ ADD COLUMN IF NOT EXISTS location text;
 ALTER TABLE businesses
 ADD COLUMN IF NOT EXISTS auto_reply_template text;
 
+-- Cost per lead used in Dashboard ROI calculation.
+ALTER TABLE businesses
+ADD COLUMN IF NOT EXISTS cost_per_lead numeric DEFAULT 3;
+
+COMMENT ON COLUMN businesses.cost_per_lead IS 'Estimated cost per lead used for ROI calculations';
+
+-- Currency and locale used for formatting.
+ALTER TABLE businesses
+ADD COLUMN IF NOT EXISTS currency_code text DEFAULT 'GBP';
+
+ALTER TABLE businesses
+ADD COLUMN IF NOT EXISTS locale text DEFAULT 'en-GB';
+
+

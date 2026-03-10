@@ -57,6 +57,7 @@ function InboxContent() {
     null
   );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"All" | "Recovered" | "Follow Up" | "Booked">("All");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -119,13 +120,19 @@ function InboxContent() {
     );
   }, [conversations, selectedKey]);
 
+  const filteredConversations = useMemo(() => {
+    const list = conversations ?? [];
+    if (statusFilter === "All") return list;
+    return list.filter((c) => c.recovery_status === statusFilter);
+  }, [conversations, statusFilter]);
+
   const {
     totalConversations,
     recoveredCount,
     inConversationCount,
     bookedCount,
   } = useMemo(() => {
-    const list = conversations ?? [];
+    const list = filteredConversations ?? [];
     const total = list.length;
     let recovered = 0;
     let inConversation = 0;
@@ -147,9 +154,9 @@ function InboxContent() {
       inConversationCount: inConversation,
       bookedCount: booked,
     };
-  }, [conversations]);
+  }, [filteredConversations]);
 
-  const hasConversations = (conversations?.length ?? 0) > 0;
+  const hasConversations = (filteredConversations?.length ?? 0) > 0;
 
   return (
     <div className="px-4 py-8 text-[#0F172A] sm:px-6 lg:px-8 lg:py-10">
@@ -201,6 +208,29 @@ function InboxContent() {
           />
         </section>
 
+        {/* Status filters */}
+        {conversations && conversations.length > 0 && (
+          <section className="mt-6 flex flex-wrap gap-2">
+            {(["All", "Recovered", "Follow Up", "Booked"] as const).map((status) => {
+              const isActive = statusFilter === status;
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                    isActive
+                      ? "bg-[#1E3A8A] text-white shadow-sm"
+                      : "bg-white text-[#64748B] border border-[#E5E7EB] hover:bg-[#F8FAFC]"
+                  }`}
+                >
+                  {status}
+                </button>
+              );
+            })}
+          </section>
+        )}
+
         {/* Empty state */}
         {!loading && !hasConversations && (
           <div className="mt-12">
@@ -232,7 +262,7 @@ function InboxContent() {
               </div>
 
               <div className="mt-2 max-h-[520px] space-y-1.5 overflow-y-auto pr-1 sm:mt-3">
-                {conversations?.map((conv) => {
+                {filteredConversations?.map((conv) => {
                   const key = makeConversationKey(conv);
                   const isSelected = key === selectedKey;
                   const baseClasses =

@@ -351,7 +351,7 @@ export default function RecoveriesPage() {
                       </div>
                     </th>
                     <th className="py-3 pr-4">Proof</th>
-                    <th className="py-3 pr-4 w-[240px]">Latest Message</th>
+                    <th className="py-3 pr-4 w-[260px]">Latest Activity</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -451,7 +451,10 @@ export default function RecoveriesPage() {
                           <td className="py-3.5 pr-4 text-xs text-[#64748B]">
                             {rec.proof_label}
                           </td>
-                          <td className="max-w-[240px] py-3.5 pr-4">
+                          <td className="max-w-[260px] py-3.5 pr-4 align-top">
+                            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[#94A3B8]">
+                              Latest Message
+                            </p>
                             <p
                               className="line-clamp-2 truncate text-[13px] text-[#64748B]"
                               title={rec.latest_message || undefined}

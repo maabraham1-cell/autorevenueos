@@ -51,7 +51,7 @@ export async function GET() {
     // show conversations for recovered leads.
     const { data: recoveries, error: recoveriesError } = await supabase
       .from("recoveries")
-      .select("id, contact_id, created_at")
+      .select("id, contact_id, created_at, status")
       .eq("business_id", business.id)
       .order("created_at", { ascending: true });
 
@@ -60,6 +60,7 @@ export async function GET() {
     }
 
     const contactRecoveryMap = new Map<string, string>();
+    const manualStatusMap = new Map<string, string>();
     const recoveredContactIds: string[] = [];
 
     (recoveries ?? []).forEach((rec: any) => {
@@ -68,6 +69,10 @@ export async function GET() {
       if (!contactRecoveryMap.has(contactId)) {
         contactRecoveryMap.set(contactId, rec.created_at as string);
         recoveredContactIds.push(contactId);
+      }
+      const manualStatus = (rec.status as string | null) ?? null;
+      if (manualStatus) {
+        manualStatusMap.set(contactId, manualStatus);
       }
     });
 
@@ -186,7 +191,8 @@ export async function GET() {
         normalized.includes("confirmed") ||
         normalized.includes("booked");
 
-      let status: "Recovered" | "In Conversation" | "Booked" = "Recovered";
+      let status: "Recovered" | "In Conversation" | "Follow Up" | "Booked" | "Lost" =
+        "Recovered";
       if (hasLaterMessages) {
         status = "In Conversation";
       }
@@ -194,9 +200,20 @@ export async function GET() {
         status = "Booked";
       }
 
+      if (conv.contact_id) {
+        const manual = manualStatusMap.get(conv.contact_id);
+        if (manual === "Recovered" || manual === "In Conversation" || manual === "Follow Up" || manual === "Booked" || manual === "Lost") {
+          status = manual;
+        }
+      }
+
       let proof_label: string;
       if (status === "Booked") {
         proof_label = "Likely booked";
+      } else if (status === "Follow Up") {
+        proof_label = "Needs follow-up";
+      } else if (status === "Lost") {
+        proof_label = "Marked as lost";
       } else if (hasLaterMessages) {
         proof_label = "Conversation continued";
       } else {

@@ -3,23 +3,40 @@ import { supabase } from "@/lib/supabase";
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await context.params;
     if (!id) {
       console.error("[recoveries] missing recovery id in route params");
       return NextResponse.json({ success: true });
     }
 
     const body = await request.json().catch(() => null);
-    const status =
+    const rawStatus =
       typeof body?.status === "string" ? body.status.trim() : null;
 
-    if (!status) {
+    if (!rawStatus) {
       console.error("[recoveries] missing status value in request body");
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ error: "Missing status" }, { status: 400 });
     }
+
+    const allowedStatuses = [
+      "Recovered",
+      "In Conversation",
+      "Follow Up",
+      "Booked",
+      "Lost",
+    ] as const;
+
+    if (!allowedStatuses.includes(rawStatus as (typeof allowedStatuses)[number])) {
+      console.error("[recoveries] invalid status value in request body", {
+        status: rawStatus,
+      });
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+
+    const status = rawStatus;
 
     const { error } = await supabase
       .from("recoveries")

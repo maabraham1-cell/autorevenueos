@@ -224,7 +224,7 @@ export default function SettingsPage() {
                   placeholder="60"
                 />
                 <p className="mt-1 text-[11px] text-[#94A3B8]">
-                  Used for estimated recovered revenue and additional bookings. Default 60.
+                  This value is used on Dashboard and Recoveries to calculate estimated recovered revenue and bookings. Default 60.
                 </p>
               </div>
 
@@ -241,6 +241,18 @@ export default function SettingsPage() {
                 />
                 <p className="mt-1 text-[11px] text-[#94A3B8]">
                   Used to route Meta/Instagram webhook events to this business. Must match the page/account ID configured in Meta.
+                </p>
+                <p className="mt-1 text-[11px] text-[#94A3B8]">
+                  Status:{" "}
+                  {(!form.meta_page_id || form.meta_page_id.trim().length === 0) ? (
+                    <span className="font-semibold text-[#DC2626]">Not configured</span>
+                  ) : (
+                    <span className="font-semibold text-[#16A34A]">Configured</span>
+                  )}
+                  .
+                </p>
+                <p className="mt-1 text-[11px] text-[#94A3B8]">
+                  Test: 1) Set Meta Page ID, 2) Save, 3) Send a test message, 4) Check Inbox.
                 </p>
               </div>
 
@@ -277,6 +289,17 @@ export default function SettingsPage() {
               Supports <code className="rounded bg-[#F1F5F9] px-1">{"{business_name}"}</code> and{" "}
               <code className="rounded bg-[#F1F5F9] px-1">{"{booking_link}"}</code> placeholders. If left blank, a
               default message will be used.
+            </p>
+            <p className="text-[11px] text-[#94A3B8]">
+              {(!form.auto_reply_template || form.auto_reply_template.trim().length === 0)
+                ? "Using default template."
+                : "Using custom template."}
+              {" "}
+              {form.auto_reply_template && !form.auto_reply_template.includes("{booking_link}") && (
+                <span className="font-semibold text-[#DC2626]">
+                  Your template does not include {"{booking_link}"}; make sure customers can still see how to book.
+                </span>
+              )}
             </p>
             <div className="mt-4 rounded-lg border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5 text-left">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">

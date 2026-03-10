@@ -18,6 +18,8 @@ type DashboardResponse = {
   cost: number;
   roi: number;
   average_booking_value?: number;
+  currency_code?: string;
+  locale?: string;
   recent_recoveries: {
     id: string;
     created_at: string;
@@ -35,14 +37,13 @@ type DashboardResponse = {
   }[];
 };
 
-const currencyFormatter = new Intl.NumberFormat('en-GB', {
-  style: 'currency',
-  currency: 'GBP',
-  maximumFractionDigits: 0,
-});
-
-function formatMoney(value: number) {
-  return currencyFormatter.format(value);
+function formatMoney(value: number, locale = 'en-GB', currency = 'GBP') {
+  const formatter = new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  });
+  return formatter.format(value);
 }
 
 function formatRoi(roi: number) {
@@ -99,6 +100,8 @@ export default function DashboardPage() {
   const cost = data?.cost ?? 0;
   const roi = data?.roi ?? 0;
   const averageBookingValue = data?.average_booking_value ?? 60;
+  const currencyCode = data?.currency_code ?? 'GBP';
+  const locale = data?.locale ?? 'en-GB';
   const pipeline = data?.pipeline ?? [];
 
   const estimatedBookings = averageBookingValue > 0 ? Math.round(estimatedRevenue / averageBookingValue) : 0;
@@ -154,7 +157,7 @@ export default function DashboardPage() {
                 Estimated Recovered Revenue
               </p>
               <p className="mt-4 text-4xl font-bold tracking-tight text-[#166534] sm:text-5xl">
-                {formatMoney(estimatedRevenue)}
+                {formatMoney(estimatedRevenue, locale, currencyCode)}
               </p>
               <p className="mt-3 text-sm text-[#64748B]">
                 Value recovered from missed enquiries
@@ -173,8 +176,8 @@ export default function DashboardPage() {
           />
           <MetricCard
             label="AutoRevenueOS Cost"
-            value={formatMoney(cost)}
-            subtitle="Assuming £3 cost per lead"
+            value={formatMoney(cost, locale, currencyCode)}
+            subtitle="Based on your configured cost per lead"
           />
           <MetricCard
             label="ROI"

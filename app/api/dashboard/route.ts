@@ -32,6 +32,11 @@ export async function GET() {
       (business as any).average_booking_value > 0
         ? (business as any).average_booking_value
         : 60;
+    const costPerLead =
+      typeof (business as any).cost_per_lead === "number" &&
+      (business as any).cost_per_lead >= 0
+        ? (business as any).cost_per_lead
+        : 3;
 
     // recovered_leads = count of recoveries for this business
     const { count: recovered_leads, error: recoveriesCountError } = await supabase
@@ -45,7 +50,7 @@ export async function GET() {
 
     const recovered = recovered_leads ?? 0;
     const estimated_revenue = recovered * averageBookingValue;
-    const cost = recovered * 3;
+    const cost = recovered * costPerLead;
     const roi = cost > 0 ? estimated_revenue / cost : 0;
 
     // Recent recoveries with basic context (created_at, contact_id, channel via events.source_channel).
@@ -200,6 +205,8 @@ export async function GET() {
       cost,
       roi,
       average_booking_value: averageBookingValue,
+      currency_code: ((business as any).currency_code as string) ?? "GBP",
+      locale: ((business as any).locale as string) ?? "en-GB",
       recent_recoveries,
       pipeline,
     });
