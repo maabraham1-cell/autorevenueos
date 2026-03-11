@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 240" role="img" aria-labelledby="logo-title">
+  <title id="logo-title">AutoRevenueOS logo (white)</title>
+  <g fill="#FFFFFF">
+    <text x="22" y="156" font-family="Inter, Satoshi, 'Segoe UI', Arial, sans-serif" font-size="112" font-weight="600" letter-spacing="-1.4">
+      AutoRevenue
+    </text>
+    <circle cx="776" cy="120" r="36" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-dasharray="200 28" />
+    <text x="820" y="156" font-family="Inter, Satoshi, 'Segoe UI', Arial, sans-serif" font-size="112" font-weight="700" letter-spacing="-1.4">
+      S
+    </text>
+    <circle cx="776" cy="120" r="65" fill="none" stroke="#FFFFFF" stroke-width="2.6" opacity="0.9" />
+  </g>
+</svg>

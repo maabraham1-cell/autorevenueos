@@ -16,6 +16,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "AutoRevenueOS | Recover Missed Revenue",
   description: "Turn missed enquiries into recovered revenue. AutoRevenueOS automatically re-engages leads and tracks conversions.",
+  icons: [
+    { rel: "icon", url: "/favicon.svg", type: "image/svg+xml" },
+    { rel: "icon", url: "/favicon.ico", sizes: "any" },
+  ],
 };
 
 export default function RootLayout({
