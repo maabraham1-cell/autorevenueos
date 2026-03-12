@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const { data: business, error } = await supabase
       .from("businesses")
-      .select("id, name, industry, booking_link, average_booking_value, location, auto_reply_template, meta_page_id, cost_per_lead, currency_code, locale")
+      .select("*")
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle();

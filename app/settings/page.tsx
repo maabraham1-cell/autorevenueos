@@ -115,8 +115,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="px-4 py-10 text-[#0F172A]">
-      <div className="mx-auto max-w-2xl">
+    <div className="px-4 py-10 bg-[#020617] bg-[radial-gradient(ellipse_at_top,_rgba(37,99,235,0.24),transparent_60%)]">
+      <div className="mx-auto max-w-2xl rounded-[18px] border border-[#E5E7EB]/80 bg-white/95 px-4 py-8 shadow-[0_32px_80px_rgba(15,23,42,0.55)] sm:px-6 lg:px-8">
         <header className="animate-fade-in-up">
           <h1 className="text-3xl font-bold tracking-tight text-[#0F172A] sm:text-4xl">
             Settings

@@ -159,8 +159,8 @@ function InboxContent() {
   const hasConversations = (filteredConversations?.length ?? 0) > 0;
 
   return (
-    <div className="px-4 py-8 text-[#0F172A] sm:px-6 lg:px-8 lg:py-10">
-      <div className="mx-auto flex w-full max-w-6xl flex-col">
+    <div className="px-4 py-8 bg-[#020617] bg-[radial-gradient(ellipse_at_top,_rgba(37,99,235,0.24),transparent_60%)] sm:px-6 lg:px-8 lg:py-10">
+      <div className="mx-auto flex w-full max-w-6xl flex-col rounded-[18px] border border-[#E5E7EB]/80 bg-white/95 px-4 py-8 shadow-[0_32px_80px_rgba(15,23,42,0.55)] sm:px-6 lg:px-8">
         <header className="animate-fade-in-up flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-[#0F172A] sm:text-4xl">

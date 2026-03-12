@@ -30,7 +30,7 @@ export default function MarketingPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[#93C5FD]">
               AutoRevenueOS
             </p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
               Stop losing revenue to missed calls.
             </h1>
             <p className="mt-4 text-base text-slate-300 sm:text-lg">

@@ -6,7 +6,7 @@ export async function GET() {
   return NextResponse.json({ message: "missed-call route works" });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const { data: business, error: businessError } = await supabase
     .from("businesses")
     .select("*")
@@ -26,12 +26,23 @@ export async function POST() {
     );
   }
 
+  // Basic Twilio Voice compatibility: accept form-encoded payload and
+  // use the caller number when present. If this is called from another
+  // system, we fall back to a test number.
+  const rawBody = await request.text();
+  const params = new URLSearchParams(rawBody);
+  const fromNumber =
+    params.get("From") ??
+    "+447700900123";
+
+  const normalizedPhone = fromNumber.replace(/\s+/g, "");
+
   const { data: contact, error: contactError } = await supabase
     .from("contacts")
     .insert({
       business_id: business.id,
-      phone: "+447700900123",
-      name: "Test Caller",
+      phone: normalizedPhone,
+      name: "Caller",
     })
     .select()
     .single();
@@ -50,7 +61,7 @@ export async function POST() {
       contact_id: contact.id,
       source_channel: "phone",
       event_type: "missed_call",
-      payload: { from: "+447700900123", status: "missed" },
+      payload: { from: normalizedPhone, status: "missed" },
     })
     .select()
     .single();
@@ -69,6 +80,7 @@ export async function POST() {
       contact_id: contact.id,
       channel: "sms",
       direction: "outbound",
+      body: null, // updated after Twilio send
     })
     .select()
     .single();
@@ -80,10 +92,17 @@ export async function POST() {
     );
   }
 
-  let sms: { success: true; provider: string; to: string; body: string };
+  let sms: {
+    success: true;
+    provider: string;
+    sid: string;
+    to: string;
+    body: string;
+    status: string | null;
+  };
   try {
     sms = await sendRecoverySms({
-      to: contact.phone ?? "+447700900123",
+      to: contact.phone ?? normalizedPhone,
       businessName: business.name,
       bookingLink: business.booking_link ?? null,
     });
@@ -96,6 +115,14 @@ export async function POST() {
     );
   }
 
+  // Attach the actual SMS body to the stored outbound message
+  if (message) {
+    await supabase
+      .from("messages")
+      .update({ body: sms.body })
+      .eq("id", message.id);
+  }
+
   return NextResponse.json({
     success: true,
     business,
@@ -105,3 +132,4 @@ export async function POST() {
     sms,
   });
 }
+
