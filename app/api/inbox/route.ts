@@ -47,8 +47,8 @@ export async function GET() {
       return NextResponse.json([] satisfies InboxConversation[]);
     }
 
-    // Look up recoveries for this business so we can preferentially
-    // show conversations for recovered leads.
+    // Load all messages for this business so every channel
+    // (including plain SMS leads) appears in the inbox.
     const { data: recoveries, error: recoveriesError } = await supabase
       .from("recoveries")
       .select("id, contact_id, created_at, status")
@@ -61,14 +61,12 @@ export async function GET() {
 
     const contactRecoveryMap = new Map<string, string>();
     const manualStatusMap = new Map<string, string>();
-    const recoveredContactIds: string[] = [];
 
     (recoveries ?? []).forEach((rec: any) => {
       const contactId = rec.contact_id as string | null;
       if (!contactId) return;
       if (!contactRecoveryMap.has(contactId)) {
         contactRecoveryMap.set(contactId, rec.created_at as string);
-        recoveredContactIds.push(contactId);
       }
       const manualStatus = (rec.status as string | null) ?? null;
       if (manualStatus) {
@@ -76,49 +74,21 @@ export async function GET() {
       }
     });
 
-    let messages: any[] = [];
-    let limitedToRecovered = recoveredContactIds.length > 0;
+    const { data: messages, error: messagesError } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: true });
 
-    if (limitedToRecovered) {
-      const { data: messagesForRecovered, error: messagesError } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("business_id", business.id)
-        .in("contact_id", recoveredContactIds)
-        .order("created_at", { ascending: true });
-
-      if (messagesError) {
-        console.error(
-          "[inbox] messages (recovered) lookup error:",
-          messagesError.message
-        );
-      } else if (messagesForRecovered && messagesForRecovered.length > 0) {
-        messages = messagesForRecovered;
-      } else {
-        // If there are no messages for recovered contacts, fall back
-        // to all conversations for this business.
-        limitedToRecovered = false;
-      }
+    if (messagesError) {
+      console.error(
+        "[inbox] messages lookup error:",
+        messagesError.message
+      );
+      return NextResponse.json([] satisfies InboxConversation[]);
     }
 
-    if (!limitedToRecovered) {
-      const { data: allMessages, error: allMessagesError } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("business_id", business.id)
-        .order("created_at", { ascending: true });
-
-      if (allMessagesError) {
-        console.error(
-          "[inbox] messages (all) lookup error:",
-          allMessagesError.message
-        );
-      } else {
-        messages = allMessages ?? [];
-      }
-    }
-
-    if (messages.length === 0) {
+    if (!messages || messages.length === 0) {
       return NextResponse.json([] satisfies InboxConversation[]);
     }
 
@@ -165,9 +135,10 @@ export async function GET() {
     const conversations: InboxConversation[] = [];
 
     for (const [, conv] of conversationMap) {
-      const earliestRecoveryAt = conv.contact_id
-        ? contactRecoveryMap.get(conv.contact_id) ?? null
-        : null;
+      const earliestRecoveryAt =
+        conv.contact_id != null
+          ? contactRecoveryMap.get(conv.contact_id) ?? null
+          : null;
 
       let hasLaterMessages = false;
       if (earliestRecoveryAt) {
