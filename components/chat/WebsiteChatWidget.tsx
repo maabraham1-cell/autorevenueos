@@ -12,8 +12,9 @@ type WebsiteMessage = {
   created_at: string;
 };
 
-function getOrCreateVisitorId(): string | null {
-  if (typeof window === "undefined") return null;
+function getOrCreateVisitorId(): string {
+  // This is only called on the client (inside useEffect / event handlers)
+  // so it's safe to assume window/localStorage exist.
   const key = "ar_os_website_visitor";
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
@@ -46,7 +47,6 @@ export function WebsiteChatWidget() {
 
   useEffect(() => {
     const visitorId = getOrCreateVisitorId();
-    if (!visitorId) return;
 
     let cancelled = false;
 
@@ -85,7 +85,6 @@ export function WebsiteChatWidget() {
     if (!trimmed) return;
 
     const visitorId = getOrCreateVisitorId();
-    if (!visitorId) return;
 
     const optimistic: WebsiteMessage = {
       id: `local-${Date.now()}`,
