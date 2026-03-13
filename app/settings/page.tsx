@@ -39,6 +39,7 @@ type SettingsData = {
   location: string;
   auto_reply_template: string;
   meta_page_id: string;
+  twilio_phone_number?: string;
 };
 
 export default function SettingsPage() {
@@ -105,6 +106,7 @@ export default function SettingsPage() {
         location: isLocInList ? loc : (loc ? 'Other' : ''),
         auto_reply_template: settings.auto_reply_template ?? '',
         meta_page_id: settings.meta_page_id ?? '',
+        twilio_phone_number: settings.twilio_phone_number ?? '',
       });
       setLocationOther(isLocInList ? '' : loc);
     } catch (e) {
@@ -179,6 +181,7 @@ export default function SettingsPage() {
           location: String(loc ?? ''),
           auto_reply_template: String(form.auto_reply_template ?? ''),
           meta_page_id: String(form.meta_page_id ?? ''),
+          twilio_phone_number: String(form.twilio_phone_number ?? ''),
         });
       }
       setTimeout(() => setSuccess(false), 3000);
@@ -324,6 +327,22 @@ export default function SettingsPage() {
                 />
                 <p className="mt-1 text-[11px] text-[#94A3B8]">
                   Included in auto-reply messages. Leave empty to use default.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
+                  Twilio phone number
+                </label>
+                <input
+                  type="tel"
+                  value={form.twilio_phone_number ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, twilio_phone_number: e.target.value }))}
+                  className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] transition-colors focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                  placeholder="+441234567890"
+                />
+                <p className="mt-1 text-[11px] text-[#94A3B8]">
+                  Used to route Twilio missed call and SMS webhooks to this business. Must match the &quot;To&quot; number configured in Twilio.
                 </p>
               </div>
 

@@ -41,6 +41,18 @@ Before deploying AutoRevenueOS, make sure the following environment variables ar
   - Only used on the server (e.g. in API routes).  
   - Must never be embedded in client-side code or sent to the browser.
 
+- **`TWILIO_ACCOUNT_SID`** (server only)  
+  - Twilio account SID used to send SMS via the Twilio API.
+
+- **`TWILIO_AUTH_TOKEN`** (server only)  
+  - Twilio auth token used both for sending messages and verifying `X-Twilio-Signature` on incoming webhooks.
+
+- **`TWILIO_PHONE_NUMBER`** (server only)  
+  - Default Twilio phone number used when sending outbound SMS.
+
+- **`META_PAGE_ACCESS_TOKEN`** (server only)  
+  - Access token used to send replies via the Meta Graph API.
+
 ### Webhook Security
 
 - `POST /api/meta-webhook` verifies the Meta webhook signature using `X-Hub-Signature-256` and `META_APP_SECRET`.
@@ -63,20 +75,38 @@ This prevents spoofed webhook events from creating fake messages or recoveries.
 
 ### App Access Protection
 
-AutoRevenueOS does **not** currently implement user authentication or per-business access control. The following routes and their APIs are publicly callable from the frontend:
+AutoRevenueOS uses Supabase Auth for sign-in and a middleware to protect internal pages and APIs.
 
-- `/dashboard` and `/api/dashboard`
-- `/inbox` and `/api/inbox`
-- `/recoveries` and `/api/recoveries`
-- `/settings` and `/api/settings`
+Protected pages:
 
-For production use, you should protect the app at the deployment layer, for example:
+- `/dashboard`
+- `/inbox`
+- `/recoveries`
+- `/settings`
 
-- **Basic HTTP auth** (username/password prompt) on the whole app or at least admin paths.  
-- **Cloudflare Access**, Vercel Protection, or a similar access gateway.  
-- **IP allowlisting** so only requests from trusted networks (VPN, office) can reach the app.
+Protected APIs:
 
-These controls should sit in front of your deployment and prevent unauthorised access to the UI and its APIs.
+- `/api/dashboard`
+- `/api/inbox`
+- `/api/recoveries`
+- `/api/recoveries/[id]`
+- `/api/settings`
+- `/api/setup`
+- `/api/chat/website`
+- `/api/test`
+
+Public endpoints:
+
+- Marketing and landing pages: `/`, `/marketing`, `/login`
+- Webhooks: `/api/missed-call`, `/api/sms-webhook`, `/api/meta-webhook`
+- Health check: `/api/health`
+
+All business-scoped queries use the authenticated Supabase user and a `profiles` table to resolve the active `business_id`. For a new user, a business is created and linked automatically.
+
+For higher security (especially in multi-tenant production), you should additionally:
+
+- Enable Supabase Row Level Security (RLS) and back it with the `profiles.business_id` linkage.
+- Put the deployment behind WAF/CDN-level protection (e.g. Cloudflare, Vercel protection features) for DDoS and abuse mitigation.
 
 ### Testing the Webhook
 
@@ -110,5 +140,20 @@ To validate webhook security end-to-end:
    ```json
    { "error": "Invalid webhook signature" }
    ```
-
    - Confirm logs show `[meta-webhook] signature verification failed` or a missing/invalid signature message.
+
+### Smoke tests
+
+For a quick local smoke test (with the dev server running on `http://localhost:3000`):
+
+```bash
+npm run smoke
+```
+
+This script checks:
+
+- `/api/health`
+- `/api/missed-call` (GET)
+- `/marketing`
+
+and exits with a non-zero code if any of them return a non-2xx response.

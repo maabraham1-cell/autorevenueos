@@ -1,135 +1,296 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { sendRecoverySms } from "@/lib/sms";
+import { verifyTwilioRequest } from "@/lib/twilioWebhook";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export async function GET() {
   return NextResponse.json({ message: "missed-call route works" });
 }
 
 export async function POST(request: Request) {
-  const { data: business, error: businessError } = await supabase
-    .from("businesses")
-    .select("*")
-    .limit(1)
-    .maybeSingle();
+  const requestId = `missed-call-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+  let businessId: string | null = null;
 
-  if (businessError) {
-    return NextResponse.json(
-      { success: false, error: businessError.message },
-      { status: 500 }
-    );
-  }
-  if (!business) {
-    return NextResponse.json(
-      { success: false, error: "No business found" },
-      { status: 500 }
-    );
-  }
-
-  // Basic Twilio Voice compatibility: accept form-encoded payload and
-  // use the caller number when present. If this is called from another
-  // system, we fall back to a test number.
-  const rawBody = await request.text();
-  const params = new URLSearchParams(rawBody);
-  const fromNumber =
-    params.get("From") ??
-    "+447700900123";
-
-  const normalizedPhone = fromNumber.replace(/\s+/g, "");
-
-  const { data: contact, error: contactError } = await supabase
-    .from("contacts")
-    .insert({
-      business_id: business.id,
-      phone: normalizedPhone,
-      name: "Caller",
-    })
-    .select()
-    .single();
-
-  if (contactError) {
-    return NextResponse.json(
-      { success: false, error: contactError.message },
-      { status: 500 }
-    );
-  }
-
-  const { data: event, error: eventError } = await supabase
-    .from("events")
-    .insert({
-      business_id: business.id,
-      contact_id: contact.id,
-      source_channel: "phone",
-      event_type: "missed_call",
-      payload: { from: normalizedPhone, status: "missed" },
-    })
-    .select()
-    .single();
-
-  if (eventError) {
-    return NextResponse.json(
-      { success: false, error: eventError.message },
-      { status: 500 }
-    );
-  }
-
-  const { data: message, error: messageError } = await supabase
-    .from("messages")
-    .insert({
-      business_id: business.id,
-      contact_id: contact.id,
-      channel: "sms",
-      direction: "outbound",
-      body: null, // updated after Twilio send
-    })
-    .select()
-    .single();
-
-  if (messageError) {
-    return NextResponse.json(
-      { success: false, error: messageError.message },
-      { status: 500 }
-    );
-  }
-
-  let sms: {
-    success: true;
-    provider: string;
-    sid: string;
-    to: string;
-    body: string;
-    status: string | null;
-  };
   try {
-    sms = await sendRecoverySms({
-      to: contact.phone ?? normalizedPhone,
-      businessName: business.name,
-      bookingLink: business.booking_link ?? null,
-    });
-  } catch (smsError) {
-    const message =
-      smsError instanceof Error ? smsError.message : "SMS send failed";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
-  }
+    const url = request.url;
+    const rawBody = await request.text();
 
-  // Attach the actual SMS body to the stored outbound message
-  if (message) {
+    const signature = request.headers.get("x-twilio-signature");
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+
+    if (!authToken) {
+      console.error("[missed-call] TWILIO_AUTH_TOKEN not set", {
+        requestId,
+      });
+      return NextResponse.json(
+        { success: false, error: "Twilio auth token not configured" },
+        { status: 500 }
+      );
+    }
+
+    const isValid = verifyTwilioRequest({
+      authToken,
+      url,
+      rawBody,
+      headerSignature: signature,
+    });
+
+    if (!isValid) {
+      console.warn("[missed-call] invalid Twilio signature", {
+        requestId,
+      });
+      return NextResponse.json(
+        { success: false, error: "Invalid webhook signature" },
+        { status: 403 }
+      );
+    }
+
+    const params = new URLSearchParams(rawBody);
+    const fromNumber =
+      (params.get("From") ?? "").trim() || "+447700900123";
+    const toNumberRaw = (params.get("To") ?? params.get("Called") ?? "").trim();
+    const toNumber = toNumberRaw.replace(/\s+/g, "") || null;
+
+    // Lightweight rate limit per calling number to reduce abuse.
+    const rateKey = `twilio-missed:${fromNumber}`;
+    const allowed = checkRateLimit(rateKey, { limit: 10, windowMs: 60_000 });
+    if (!allowed) {
+      console.warn("[missed-call] rate limit exceeded", {
+        requestId,
+        from: fromNumber,
+      });
+      return NextResponse.json(
+        { success: false, error: "Too many requests" },
+        { status: 429 }
+      );
+    }
+
+    // Prefer routing by Twilio "To" number when configured on the business.
+    let business = null as any;
+    let businessError: any = null;
+
+    if (toNumber) {
+      const { data, error } = await supabase
+        .from("businesses")
+        .select("*")
+        .eq("twilio_phone_number", toNumber)
+        .limit(1)
+        .maybeSingle();
+      business = data;
+      businessError = error;
+      if (!business && !error) {
+        console.warn("[missed-call] no business matched twilio_phone_number", {
+          requestId,
+          toNumber,
+        });
+      }
+    }
+
+    if (!business) {
+      const { data, error } = await supabase
+        .from("businesses")
+        .select("*")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      business = data;
+      businessError = businessError ?? error;
+    }
+
+    if (businessError) {
+      console.error("[missed-call] business lookup error:", {
+        requestId,
+        error: businessError.message,
+      });
+      return NextResponse.json(
+        { success: false, error: "Failed to load business" },
+        { status: 500 }
+      );
+    }
+
+    if (!business) {
+      console.error("[missed-call] no business found", { requestId });
+      return NextResponse.json(
+        { success: false, error: "No business configured" },
+        { status: 500 }
+      );
+    }
+
+    businessId = business.id as string;
+
+    const callSid = (params.get("CallSid") ?? "").trim();
+
+    console.log("[missed-call] incoming payload", {
+      requestId,
+      From: fromNumber,
+      CallSid: callSid || null,
+    });
+
+    if (!fromNumber) {
+      console.error("[missed-call] missing From number", { requestId });
+      return NextResponse.json(
+        { success: false, error: "Missing From number" },
+        { status: 400 }
+      );
+    }
+
+    // Idempotency: if we've already processed this CallSid, return success without duplicating rows.
+    if (callSid) {
+      const { data: existingEvent, error: existingError } = await supabase
+        .from("events")
+        .select("id")
+        .eq("business_id", business.id)
+        .eq("external_id", callSid)
+        .maybeSingle();
+
+      if (existingError) {
+        console.error("[missed-call] idempotency check error:", {
+          requestId,
+          error: existingError.message,
+        });
+      } else if (existingEvent) {
+        console.log("[missed-call] duplicate webhook (CallSid) ignored", {
+          requestId,
+          eventId: existingEvent.id,
+        });
+        return NextResponse.json({ success: true, deduped: true });
+      }
+    }
+
+    const normalizedPhone = fromNumber.replace(/\s+/g, "");
+
+    const { data: contact, error: contactError } = await supabase
+      .from("contacts")
+      .insert({
+        business_id: business.id,
+        phone: normalizedPhone,
+        name: "Caller",
+      })
+      .select()
+      .single();
+
+    if (contactError || !contact) {
+      console.error("[missed-call] contact insert error:", {
+        requestId,
+        error: contactError?.message,
+      });
+      return NextResponse.json(
+        { success: false, error: "Failed to create contact" },
+        { status: 500 }
+      );
+    }
+
+    const { data: event, error: eventError } = await supabase
+      .from("events")
+      .insert({
+        business_id: business.id,
+        contact_id: contact.id,
+        source_channel: "phone",
+        event_type: "missed_call",
+        external_id: callSid || null,
+        payload: { from: normalizedPhone, status: "missed" },
+      })
+      .select()
+      .single();
+
+    if (eventError || !event) {
+      console.error("[missed-call] event insert error:", {
+        requestId,
+        error: eventError?.message,
+      });
+      return NextResponse.json(
+        { success: false, error: "Failed to create event" },
+        { status: 500 }
+      );
+    }
+
+    const { data: message, error: messageError } = await supabase
+      .from("messages")
+      .insert({
+        business_id: business.id,
+        contact_id: contact.id,
+        channel: "sms",
+        direction: "outbound",
+        body: null, // updated after Twilio send
+      })
+      .select()
+      .single();
+
+    if (messageError || !message) {
+      console.error("[missed-call] message insert error:", {
+        requestId,
+        error: messageError?.message,
+      });
+      return NextResponse.json(
+        { success: false, error: "Failed to create message" },
+        { status: 500 }
+      );
+    }
+
+    let sms: {
+      success: true;
+      provider: string;
+      sid: string;
+      to: string;
+      body: string;
+      status: string | null;
+    };
+    try {
+      sms = await sendRecoverySms({
+        to: (contact as any).phone ?? normalizedPhone,
+        businessName: (business.name as string) ?? "your business",
+        bookingLink: (business.booking_link as string | null) ?? null,
+      });
+    } catch (smsError) {
+      const messageText =
+        smsError instanceof Error ? smsError.message : "SMS send failed";
+      console.error("[missed-call] sendRecoverySms error:", {
+        requestId,
+        error: messageText,
+      });
+      return NextResponse.json(
+        { success: false, error: messageText },
+        { status: 500 }
+      );
+    }
+
+    // Attach the actual SMS body and Twilio SID to the stored outbound message
     await supabase
       .from("messages")
-      .update({ body: sms.body })
+      .update({ body: sms.body, external_id: sms.sid })
       .eq("id", message.id);
-  }
 
-  return NextResponse.json({
-    success: true,
-    business,
-    contact,
-    event,
-    message,
-    sms,
-  });
+    console.log("[missed-call] processed successfully", {
+      requestId,
+      businessId,
+      contactId: contact.id,
+      eventId: event.id,
+      messageId: message.id,
+      smsSid: sms.sid,
+    });
+
+    return NextResponse.json({
+      success: true,
+      business_id: businessId,
+      contact_id: contact.id,
+      event_id: event.id,
+      message_id: message.id,
+      sms_sid: sms.sid,
+    });
+  } catch (e) {
+    console.error("[missed-call] unexpected error:", {
+      requestId,
+      error: e,
+      businessId,
+    });
+    return NextResponse.json(
+      { success: false, error: "Unexpected server error" },
+      { status: 500 }
+    );
+  }
 }
+
 

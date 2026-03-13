@@ -78,9 +78,19 @@ export async function getCurrentUserAndBusiness(
       ? createClient(supabaseUrl, supabaseServiceKey)
       : supabase;
 
+    const userMeta = (user as any).user_metadata ?? {};
+    const businessNameFromMeta =
+      (typeof userMeta.business_name === "string" && userMeta.business_name.trim().length > 0
+        ? userMeta.business_name.trim()
+        : null) ||
+      (typeof userMeta.full_name === "string" && userMeta.full_name.trim().length > 0
+        ? userMeta.full_name.trim()
+        : null) ||
+      "New Business";
+
     const { data: newBusiness, error: insertBizError } = await adminClient
       .from("businesses")
-      .insert({ name: "New Business" })
+      .insert({ name: businessNameFromMeta })
       .select("id")
       .single();
 

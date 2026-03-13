@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 type WebsiteMessage = {
   id: string;
@@ -15,9 +16,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const visitorId = searchParams.get("visitorId");
 
-  if (!visitorId) {
+  if (!visitorId || visitorId.length > 200) {
     return NextResponse.json(
-      { error: "Missing visitorId" },
+      { error: "Invalid or missing visitorId" },
       { status: 400 },
     );
   }
@@ -82,10 +83,26 @@ type PostBody = {
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as PostBody | null;
 
-  if (!body || !body.visitorId || !body.message) {
+  const visitorIdRaw = body?.visitorId ?? "";
+  const messageRaw = body?.message ?? "";
+
+  const visitorId = typeof visitorIdRaw === "string" ? visitorIdRaw.trim() : "";
+  const message = typeof messageRaw === "string" ? messageRaw.trim() : "";
+
+  if (!visitorId || visitorId.length > 200 || !message) {
     return NextResponse.json(
-      { error: "Missing visitorId or message" },
+      { error: "Missing or invalid visitorId or message" },
       { status: 400 },
+    );
+  }
+
+  // Lightweight per-visitor rate limit to reduce abuse.
+  const key = `website-chat:${visitorId}`;
+  const allowed = checkRateLimit(key, { limit: 20, windowMs: 60_000 });
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many messages, please slow down." },
+      { status: 429 },
     );
   }
 
@@ -97,8 +114,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const visitorId = body.visitorId;
-  const text = body.message.slice(0, 2000);
+  const text = message.slice(0, 2000);
 
   // Find or create contact for this visitor
   const { data: existingContact, error: contactLookupError } = await supabase
@@ -148,14 +164,14 @@ export async function POST(request: NextRequest) {
 
   const { data: inserted, error: insertError } = await supabase
     .from("messages")
-    .insert({
-      business_id: business.id,
-      contact_id: contactId,
-      channel: CHANNEL,
-      direction: "inbound",
-      body: text,
-      status: "received",
-    })
+      .insert({
+        business_id: business.id,
+        contact_id: contactId,
+        channel: CHANNEL,
+        direction: "inbound",
+        body: text,
+        status: "received",
+      })
     .select("*")
     .maybeSingle();
 

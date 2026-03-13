@@ -13,6 +13,9 @@ function LoginForm() {
     (searchParams.get('mode') as 'login' | 'signup' | null) ?? 'login';
 
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
+  const [fullName, setFullName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +37,20 @@ function LoginForm() {
 
     try {
       if (mode === 'signup') {
+        const profileName = fullName.trim();
+        const bizName = businessName.trim();
+        const phoneValue = phone.trim();
+
         const { error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            data: {
+              full_name: profileName || null,
+              business_name: bizName || null,
+              phone: phoneValue || null,
+            },
+          },
         });
         if (error) throw error;
         setEmailVerificationSent(email);
@@ -91,6 +105,52 @@ function LoginForm() {
         )}
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          {mode === 'signup' && (
+            <>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+                  Full name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                  placeholder="e.g. Alex Smith"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+                  Business name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                  placeholder="e.g. Oakwood Dental Clinic"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+                  Mobile number
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                  placeholder="+44 7700 900123"
+                />
+                <p className="mt-1 text-[11px] text-[#94A3B8]">
+                  Used so we can contact you about your account and recoveries. We won&apos;t spam you.
+                </p>
+              </div>
+            </>
+          )}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
               Email

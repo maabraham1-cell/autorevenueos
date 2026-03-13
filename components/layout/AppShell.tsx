@@ -10,8 +10,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isMarketing = pathname === '/marketing' || pathname?.startsWith('/marketing#');
-  const isApp = !isMarketing && pathname !== '/' && pathname !== '/login';
+  const isMarketing =
+    pathname === '/' ||
+    pathname === '/marketing' ||
+    pathname?.startsWith('/marketing#') ||
+    pathname?.startsWith('/#');
+  const isApp = !isMarketing && pathname !== '/login';
 
   async function handleLogout() {
     const supabase = createSupabaseBrowserClient();
@@ -90,14 +94,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     Start free trial
                   </Link>
                 </>
-              ) : (
-                <Link
-                  href="/marketing"
-                  className="ml-2 hidden items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md sm:inline-flex"
-                >
-                  Marketing
-                </Link>
-              )}
+              ) : null}
             </div>
 
             {/* Mobile toggle */}
@@ -186,8 +183,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <main className="flex-1">{children}</main>
       <footer className="border-t border-[#E5E7EB] bg-white py-4">
-        <div className="mx-auto flex max-w-6xl justify-between px-4 text-xs text-[#6B7280] sm:px-6 sm:text-sm">
+        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-2 px-4 text-xs text-[#6B7280] sm:flex-row sm:items-center sm:px-6 sm:text-sm">
           <span>© 2026 AutoRevenue Systems Ltd. AutoRevenueOS™. All rights reserved.</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[11px] text-[#9CA3AF]">
+              AutoRevenueOS uses local storage for the website chat visitor ID and standard analytics/logging for reliability.
+            </span>
+            <a
+              href="/privacy"
+              className="text-[11px] font-medium text-[#4B5563] underline-offset-2 hover:text-[#111827] hover:underline"
+            >
+              Privacy Policy
+            </a>
+            <a
+              href="/terms"
+              className="text-[11px] font-medium text-[#4B5563] underline-offset-2 hover:text-[#111827] hover:underline"
+            >
+              Terms of Service
+            </a>
+          </div>
         </div>
       </footer>
     </div>
