@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserAndBusiness } from "@/lib/auth";
 
 type InboxMessage = {
   id: string;
@@ -28,23 +29,19 @@ type ConversationAccumulator = {
   latest_message_at: string;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // MVP: use the first business row as the active business,
-    // matching the dashboard behaviour.
-    const { data: business, error: businessError } = await supabase
-      .from("businesses")
-      .select("*")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const { user, business } = await getCurrentUserAndBusiness(request);
 
-    if (businessError) {
-      console.error("[inbox] business lookup error:", businessError.message);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 },
+      );
     }
 
     if (!business) {
-      return NextResponse.json([] satisfies InboxConversation[]);
+      return NextResponse.json([] satisfies InboxConversation[], { status: 200 });
     }
 
     // Load all messages for this business so every channel

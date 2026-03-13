@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserAndBusiness } from "@/lib/auth";
 
 type RecoveryRow = {
   id: string;
@@ -36,21 +37,19 @@ function getChannelFromEvents(row: RecoveryRow): string | null {
   return events.source_channel ?? null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data: business, error: businessError } = await supabase
-      .from("businesses")
-      .select("*")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const { user, business } = await getCurrentUserAndBusiness(request);
 
-    if (businessError) {
-      console.error("[recoveries] business lookup error:", businessError.message);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 },
+      );
     }
 
     if (!business) {
-      return NextResponse.json([] satisfies RecoveryDto[]);
+      return NextResponse.json([] satisfies RecoveryDto[], { status: 200 });
     }
 
     const { data: recoveriesRaw, error: recoveriesError } = await supabase

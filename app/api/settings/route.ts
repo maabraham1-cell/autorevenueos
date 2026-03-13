@@ -1,69 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserAndBusiness } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const { data: business, error } = await supabase
-      .from("businesses")
-      .select("*")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const { user, business } = await getCurrentUserAndBusiness(request);
 
-    if (error) {
-      console.error("[settings] business lookup error:", error.message);
-      return NextResponse.json({ error: "Failed to load settings" }, { status: 500 });
+    if (!user) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 },
+      );
     }
 
     if (!business) {
-      // Auto-create a default business for first-run MVP behaviour.
-      const { data: created, error: createError } = await supabase
-        .from("businesses")
-        .insert({
-          name: "Default Business",
-          industry: null,
-          booking_link: null,
-        })
-        .select("*")
-        .single();
-
-      if (createError || !created) {
-        console.error("[settings] failed to auto-create default business:", createError?.message);
-        return NextResponse.json({
-          id: null,
-          name: "",
-          industry: "",
-          booking_link: "",
-          average_booking_value: 60,
-          location: "",
-          auto_reply_template: "",
-          meta_page_id: "",
-          cost_per_lead: 3,
-          currency_code: "GBP",
-          locale: "en-GB",
-        });
-      }
-
-      return NextResponse.json({
-        id: created.id,
-        name: (created.name as string) ?? "Default Business",
-        industry: (created.industry as string) ?? "",
-        booking_link: (created.booking_link as string) ?? "",
-        average_booking_value:
-          typeof (created as any).average_booking_value === "number" &&
-          (created as any).average_booking_value > 0
-            ? (created as any).average_booking_value
-            : 60,
-        location: ((created as any).location as string) ?? "",
-        auto_reply_template: ((created as any).auto_reply_template as string) ?? "",
-        meta_page_id: ((created as any).meta_page_id as string) ?? "",
-        cost_per_lead:
-          typeof (created as any).cost_per_lead === "number"
-            ? (created as any).cost_per_lead
-            : 3,
-        currency_code: ((created as any).currency_code as string) ?? "GBP",
-        locale: ((created as any).locale as string) ?? "en-GB",
-      });
+      return NextResponse.json(
+        { error: "No business linked to this user" },
+        { status: 400 },
+      );
     }
 
     const abv =
@@ -100,15 +54,20 @@ export async function GET() {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { data: business, error: fetchError } = await supabase
-      .from("businesses")
-      .select("id")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const { user, business } = await getCurrentUserAndBusiness(request);
 
-    if (fetchError || !business) {
-      return NextResponse.json({ error: "No business found" }, { status: 404 });
+    if (!user) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 },
+      );
+    }
+
+    if (!business) {
+      return NextResponse.json(
+        { error: "No business linked to this user" },
+        { status: 404 },
+      );
     }
 
     const body = await request.json().catch(() => ({}));

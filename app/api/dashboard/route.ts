@@ -1,30 +1,22 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserAndBusiness } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // For MVP: use the first business row.
-    const { data: business, error: businessError } = await supabase
-      .from("businesses")
-      .select("*")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    const { user, business } = await getCurrentUserAndBusiness(request);
 
-    if (businessError) {
-      console.error("[dashboard] business lookup error:", businessError.message);
+    if (!user) {
+      return NextResponse.json(
+        { error: "Not authenticated" },
+        { status: 401 },
+      );
     }
 
     if (!business) {
       return NextResponse.json({
-        recovered_leads: 0,
-        estimated_revenue: 0,
-        cost: 0,
-        roi: 0,
-        average_booking_value: 60,
-        recent_recoveries: [],
-        pipeline: [],
-      });
+        error: "No business linked to this user",
+      }, { status: 400 });
     }
 
     const averageBookingValue =

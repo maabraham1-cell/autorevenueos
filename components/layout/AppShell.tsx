@@ -1,14 +1,24 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isMarketing = pathname === '/marketing' || pathname?.startsWith('/marketing#');
+  const isApp = !isMarketing && pathname !== '/' && pathname !== '/login';
+
+  async function handleLogout() {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.auth.signOut();
+    setMobileOpen(false);
+    router.push('/login');
+  }
 
   const navItems = isMarketing
     ? [
@@ -56,12 +66,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 );
               })}
-              <Link
-                href={isMarketing ? '/dashboard' : '/marketing'}
-                className="ml-2 hidden items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md sm:inline-flex"
-              >
-                {isMarketing ? 'Open app' : 'Marketing'}
-              </Link>
+              {isApp && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="ml-2 hidden rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#64748B] shadow-sm transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:inline-flex"
+                >
+                  Log out
+                </button>
+              )}
+              {isMarketing ? (
+                <>
+                  <Link
+                    href="/login"
+                    className="ml-2 hidden rounded-lg px-3 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:inline-flex"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    href="/login?mode=signup"
+                    className="ml-2 hidden items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md sm:inline-flex"
+                  >
+                    Start free trial
+                  </Link>
+                </>
+              ) : (
+                <Link
+                  href="/marketing"
+                  className="ml-2 hidden items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md sm:inline-flex"
+                >
+                  Marketing
+                </Link>
+              )}
             </div>
 
             {/* Mobile toggle */}
@@ -106,13 +142,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </Link>
                   );
                 })}
-                <Link
-                  href={isMarketing ? '/dashboard' : '/marketing'}
-                  onClick={() => setMobileOpen(false)}
-                  className="mt-1 inline-flex items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md"
-                >
-                  {isMarketing ? 'Open app' : 'Go to marketing site'}
-                </Link>
+                {isApp && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleLogout();
+                    }}
+                    className="mt-1 inline-flex w-full items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#64748B]"
+                  >
+                    Log out
+                  </button>
+                )}
+                {isMarketing ? (
+                  <>
+                    <Link
+                      href="/login"
+                      onClick={() => setMobileOpen(false)}
+                      className="mt-1 inline-flex w-full items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#64748B]"
+                    >
+                      Log in
+                    </Link>
+                    <Link
+                      href="/login?mode=signup"
+                      onClick={() => setMobileOpen(false)}
+                      className="mt-1 inline-flex items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md"
+                    >
+                      Start free trial
+                    </Link>
+                  </>
+                ) : (
+                  <Link
+                    href="/marketing"
+                    onClick={() => setMobileOpen(false)}
+                    className="mt-1 inline-flex items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md"
+                  >
+                    Go to marketing site
+                  </Link>
+                )}
               </div>
             </div>
           </div>

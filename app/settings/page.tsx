@@ -2,6 +2,34 @@
 
 import { useEffect, useState } from 'react';
 
+const INDUSTRY_OPTIONS = [
+  '',
+  'Beauty / Salon',
+  'Dental',
+  'Healthcare Clinic',
+  'Fitness / Wellness',
+  'Trades / Local Services',
+  'Professional Services',
+  'Restaurant / Hospitality',
+  'Other',
+];
+
+const LOCATION_OPTIONS = [
+  '',
+  'London',
+  'South East England',
+  'South West England',
+  'Midlands',
+  'North West England',
+  'North East England',
+  'Yorkshire',
+  'Scotland',
+  'Wales',
+  'Northern Ireland',
+  'Ireland',
+  'Other',
+];
+
 type SettingsData = {
   id: string | null;
   name: string;
@@ -20,6 +48,11 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [form, setForm] = useState<Partial<SettingsData>>({});
+  const [noBusiness, setNoBusiness] = useState(false);
+  const [setupName, setSetupName] = useState('');
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [locationOther, setLocationOther] = useState('');
 
   const previewText = (() => {
     const businessName =
@@ -39,35 +72,75 @@ export default function SettingsPage() {
       .replace(/{booking_link}/g, bookingLink);
   })();
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        setLoading(true);
-        const res = await fetch('/api/settings');
-        if (!res.ok) throw new Error('Failed to load settings');
-        const json = (await res.json()) as SettingsData;
-        if (!cancelled) {
-          setData(json);
-          setForm({
-            name: json.name ?? '',
-            industry: json.industry ?? '',
-            booking_link: json.booking_link ?? '',
-            average_booking_value: json.average_booking_value ?? 60,
-            location: json.location ?? '',
-            auto_reply_template: json.auto_reply_template ?? '',
-            meta_page_id: json.meta_page_id ?? '',
-          });
+  const loadSettings = async () => {
+    setLoading(true);
+    setError(null);
+    setNoBusiness(false);
+    try {
+      const res = await fetch('/api/settings');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 400 && (json?.error === 'No business linked to this user' || json?.error?.toLowerCase?.().includes('business'))) {
+          setNoBusiness(true);
+          return;
         }
-      } catch (e) {
-        if (!cancelled) setError('Failed to load settings.');
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (res.status === 401) {
+          setError('Please log in again.');
+          return;
+        }
+        setError(json?.error ?? 'Failed to load settings.');
+        return;
       }
+      const settings = json as SettingsData;
+      setData(settings);
+      const loc = (settings.location ?? '').trim();
+      const isLocInList = LOCATION_OPTIONS.some((o) => o && o === loc);
+      const ind = (settings.industry ?? '').trim();
+      const industryInList = INDUSTRY_OPTIONS.some((o) => o && o === ind);
+      setForm({
+        name: settings.name ?? '',
+        industry: industryInList ? ind : '',
+        booking_link: settings.booking_link ?? '',
+        average_booking_value: settings.average_booking_value ?? 60,
+        location: isLocInList ? loc : (loc ? 'Other' : ''),
+        auto_reply_template: settings.auto_reply_template ?? '',
+        meta_page_id: settings.meta_page_id ?? '',
+      });
+      setLocationOther(isLocInList ? '' : loc);
+    } catch (e) {
+      setError('Failed to load settings.');
+    } finally {
+      setLoading(false);
     }
-    load();
-    return () => { cancelled = true; };
+  };
+
+  useEffect(() => {
+    loadSettings();
   }, []);
+
+  const handleCreateBusiness = async () => {
+    setSetupError(null);
+    setSetupLoading(true);
+    try {
+      const res = await fetch('/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: (setupName || 'New Business').trim() || 'New Business' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSetupError(json?.error ?? 'Failed to create business');
+        return;
+      }
+      await loadSettings();
+      setNoBusiness(false);
+      setSetupName('');
+    } catch (e) {
+      setSetupError('Something went wrong. Please try again.');
+    } finally {
+      setSetupLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!form) return;
@@ -75,15 +148,16 @@ export default function SettingsPage() {
     setError(null);
     setSuccess(false);
     try {
+      const locationValue = (form.location === 'Other' ? locationOther : (form.location ?? '')).trim() || null;
       const res = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name ?? '',
-          industry: form.industry ?? '',
+          industry: (form.industry ?? '').trim() || null,
           booking_link: form.booking_link ?? '',
           average_booking_value: Number(form.average_booking_value) || 60,
-          location: form.location ?? '',
+          location: locationValue,
           auto_reply_template: form.auto_reply_template ?? '',
           meta_page_id: form.meta_page_id ?? '',
         }),
@@ -95,13 +169,14 @@ export default function SettingsPage() {
       }
       setSuccess(true);
       if (data) {
+        const loc = form.location === 'Other' ? locationOther : (form.location ?? '');
         setData({
           ...data,
           name: String(form.name ?? ''),
           industry: String(form.industry ?? ''),
           booking_link: String(form.booking_link ?? ''),
           average_booking_value: Number(form.average_booking_value) || 60,
-          location: String(form.location ?? ''),
+          location: String(loc ?? ''),
           auto_reply_template: String(form.auto_reply_template ?? ''),
           meta_page_id: String(form.meta_page_id ?? ''),
         });
@@ -138,6 +213,38 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {noBusiness && (
+          <div className="animate-fade-in-up mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6">
+            <h2 className="text-lg font-semibold text-[#0F172A]">Create your business</h2>
+            <p className="mt-1 text-sm text-[#64748B]">
+              Your account isn’t linked to a business yet. Add a business name below to get started — you can change it anytime in Settings.
+            </p>
+            <div className="mt-4">
+              <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
+                Business name
+              </label>
+              <input
+                type="text"
+                value={setupName}
+                onChange={(e) => setSetupName(e.target.value)}
+                placeholder="e.g. Acme Spa"
+                className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+              />
+            </div>
+            {setupError && (
+              <p className="mt-2 text-sm text-red-600">{setupError}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleCreateBusiness}
+              disabled={setupLoading}
+              className="mt-4 rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
+            >
+              {setupLoading ? 'Creating…' : 'Create business'}
+            </button>
+          </div>
+        )}
+
         <section className="card-base animate-fade-in-up mt-8 rounded-[14px] p-6">
           <h2 className="text-sm font-semibold text-[#0F172A]">Business</h2>
           <p className="mt-1 text-xs text-[#64748B]">
@@ -146,6 +253,8 @@ export default function SettingsPage() {
 
           {loading ? (
             <p className="mt-6 text-sm text-[#94A3B8]">Loading…</p>
+          ) : noBusiness ? (
+            <p className="mt-6 text-sm text-[#94A3B8]">Create your business above to see settings.</p>
           ) : (
             <div className="mt-6 space-y-5">
               <div>
@@ -165,13 +274,15 @@ export default function SettingsPage() {
                 <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
                   Industry
                 </label>
-                <input
-                  type="text"
+                <select
                   value={form.industry ?? ''}
                   onChange={(e) => setForm((f) => ({ ...f, industry: e.target.value }))}
                   className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] transition-colors focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="e.g. Beauty, Restaurant"
-                />
+                >
+                  {INDUSTRY_OPTIONS.map((opt) => (
+                    <option key={opt || '_'} value={opt}>{opt || 'Select industry…'}</option>
+                  ))}
+                </select>
                 <p className="mt-1 text-[11px] text-[#94A3B8]">Optional.</p>
               </div>
 
@@ -179,13 +290,24 @@ export default function SettingsPage() {
                 <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
                   Location
                 </label>
-                <input
-                  type="text"
+                <select
                   value={form.location ?? ''}
                   onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
                   className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] transition-colors focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="e.g. London, UK"
-                />
+                >
+                  {LOCATION_OPTIONS.map((opt) => (
+                    <option key={opt || '_'} value={opt}>{opt || 'Select location…'}</option>
+                  ))}
+                </select>
+                {form.location === 'Other' && (
+                  <input
+                    type="text"
+                    value={locationOther}
+                    onChange={(e) => setLocationOther(e.target.value)}
+                    placeholder="e.g. Bristol, UK"
+                    className="mt-2 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#0F172A] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                  />
+                )}
                 <p className="mt-1 text-[11px] text-[#94A3B8]">Optional. Used in messaging context only.</p>
               </div>
 

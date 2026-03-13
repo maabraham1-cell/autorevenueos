@@ -72,12 +72,20 @@ export default function DashboardPage() {
       try {
         setLoading(true);
         const res = await fetch('/api/dashboard');
+        const body = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(`Dashboard API error: ${res.status}`);
+          if (res.status === 400 && (body?.error === 'No business linked to this user' || body?.error?.includes('business'))) {
+            if (!cancelled) setError('no_business');
+            return;
+          }
+          if (res.status === 401) {
+            if (!cancelled) setError('Not signed in.');
+            return;
+          }
+          throw new Error(body?.error ?? `Dashboard API error: ${res.status}`);
         }
-        const json = (await res.json()) as DashboardResponse;
         if (!cancelled) {
-          setData(json);
+          setData(body as DashboardResponse);
           setError(null);
         }
       } catch (e) {
@@ -140,7 +148,16 @@ export default function DashboardPage() {
           )}
         </header>
 
-        {error && (
+        {error === 'no_business' && (
+          <div className="animate-fade-in-up mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900 shadow-sm">
+            <p className="font-medium">Complete your setup</p>
+            <p className="mt-1 text-amber-800">Your account isn’t linked to a business yet. Add your business details in Settings to see your dashboard.</p>
+            <a href="/settings" className="mt-3 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
+              Open Settings
+            </a>
+          </div>
+        )}
+        {error && error !== 'no_business' && (
           <div className="animate-fade-in-up mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
             {error}
           </div>

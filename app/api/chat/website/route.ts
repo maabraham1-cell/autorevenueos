@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserAndBusiness } from "@/lib/auth";
 
 type WebsiteMessage = {
   id: string;
@@ -10,23 +11,7 @@ type WebsiteMessage = {
 
 const CHANNEL = "website_chat";
 
-async function getActiveBusiness() {
-  const { data, error } = await supabase
-    .from("businesses")
-    .select("*")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[website chat] business lookup error:", error.message);
-    throw new Error("Failed to load business");
-  }
-
-  return data;
-}
-
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const visitorId = searchParams.get("visitorId");
 
@@ -37,9 +22,10 @@ export async function GET(request: Request) {
     );
   }
 
-  const business = await getActiveBusiness();
-  if (!business) {
-    return NextResponse.json<WebsiteMessage[]>([]);
+  const { user, business } = await getCurrentUserAndBusiness(request);
+
+  if (!user || !business) {
+    return NextResponse.json<WebsiteMessage[]>([], { status: 200 });
   }
 
   const { data: contact, error: contactError } = await supabase
@@ -93,7 +79,7 @@ type PostBody = {
   message: string;
 };
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as PostBody | null;
 
   if (!body || !body.visitorId || !body.message) {
@@ -103,11 +89,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const business = await getActiveBusiness();
-  if (!business) {
+  const { user, business } = await getCurrentUserAndBusiness(request);
+  if (!user || !business) {
     return NextResponse.json(
-      { error: "No active business configured" },
-      { status: 400 },
+      { error: "Not authenticated or no business configured" },
+      { status: 401 },
     );
   }
 
