@@ -45,6 +45,67 @@ export async function GET(request: NextRequest) {
     const cost = recovered * costPerLead;
     const roi = cost > 0 ? estimated_revenue / cost : 0;
 
+    // Confirmed bookings and billing: distinct from recovered leads (attribution).
+    const { count: confirmed_count, error: confirmedCountError } = await supabase
+      .from("confirmed_bookings")
+      .select("*", { count: "exact", head: true })
+      .eq("business_id", business.id);
+
+    if (confirmedCountError) {
+      console.error("[dashboard] confirmed_bookings count error:", confirmedCountError.message);
+    }
+
+    const { count: billed_count, error: billedCountError } = await supabase
+      .from("confirmed_bookings")
+      .select("*", { count: "exact", head: true })
+      .eq("business_id", business.id)
+      .not("billed_at", "is", null);
+
+    if (billedCountError) {
+      console.error("[dashboard] billed count error:", billedCountError.message);
+    }
+
+    const { data: recentConfirmedRaw, error: recentConfirmedError } = await supabase
+      .from("confirmed_bookings")
+      .select("id, confirmed_at, confirmation_source, billing_status, billing_error, external_booking_id")
+      .eq("business_id", business.id)
+      .order("confirmed_at", { ascending: false })
+      .limit(10);
+
+    if (recentConfirmedError) {
+      console.error("[dashboard] recent confirmed_bookings error:", recentConfirmedError.message);
+    }
+
+    const recent_confirmed_bookings =
+      recentConfirmedRaw?.map((r) => ({
+        id: r.id as string,
+        confirmed_at: r.confirmed_at as string,
+        confirmation_source: r.confirmation_source as string,
+        billing_status: (r as { billing_status?: string }).billing_status ?? "pending",
+        billing_error: (r as { billing_error?: string }).billing_error ?? null,
+        external_booking_id: (r as { external_booking_id?: string }).external_booking_id ?? null,
+      })) ?? [];
+
+    const { data: recentBillingEventsRaw, error: billingEventsError } = await supabase
+      .from("billing_events")
+      .select("id, event_type, message, created_at, confirmed_booking_id")
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (billingEventsError) {
+      console.error("[dashboard] billing_events error:", billingEventsError.message);
+    }
+
+    const recent_billing_events =
+      recentBillingEventsRaw?.map((e) => ({
+        id: e.id as string,
+        event_type: e.event_type as string,
+        message: (e as { message?: string }).message ?? null,
+        created_at: e.created_at as string,
+        confirmed_booking_id: (e as { confirmed_booking_id?: string }).confirmed_booking_id ?? null,
+      })) ?? [];
+
     // Recent recoveries with basic context (created_at, contact_id, channel via events.source_channel).
     const { data: recentRecoveriesRaw, error: recentRecoveriesError } = await supabase
       .from("recoveries")
@@ -193,6 +254,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       recovered_leads: recovered,
+      confirmed_bookings: confirmed_count ?? 0,
+      billed_bookings: billed_count ?? 0,
       estimated_revenue,
       cost,
       roi,
@@ -200,6 +263,8 @@ export async function GET(request: NextRequest) {
       currency_code: ((business as any).currency_code as string) ?? "GBP",
       locale: ((business as any).locale as string) ?? "en-GB",
       recent_recoveries,
+      recent_confirmed_bookings,
+      recent_billing_events,
       pipeline,
     });
   } catch (e) {
@@ -207,11 +272,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         recovered_leads: 0,
+        confirmed_bookings: 0,
+        billed_bookings: 0,
         estimated_revenue: 0,
         cost: 0,
         roi: 0,
         average_booking_value: 60,
         recent_recoveries: [],
+        recent_confirmed_bookings: [],
+        recent_billing_events: [],
         pipeline: [],
       },
       { status: 500 }

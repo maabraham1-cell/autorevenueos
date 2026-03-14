@@ -54,6 +54,13 @@ export default function SettingsPage() {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [locationOther, setLocationOther] = useState('');
+  const [bookingIntegrations, setBookingIntegrations] = useState<{
+    booking_page_url: string;
+    webhooks: { calendly: string; calcom: string; acuity: string; square: string };
+    hint?: { square?: string; acuity?: string };
+  } | null>(null);
+  const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
 
   const previewText = (() => {
     const businessName =
@@ -119,6 +126,20 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (noBusiness || !data?.id) return;
+    let cancelled = false;
+    setIntegrationsLoading(true);
+    fetch('/api/booking-integrations')
+      .then((res) => res.json())
+      .then((json) => {
+        if (!cancelled && json?.booking_page_url) setBookingIntegrations(json);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setIntegrationsLoading(false); });
+    return () => { cancelled = true; };
+  }, [data?.id, noBusiness]);
 
   const handleCreateBusiness = async () => {
     setSetupError(null);
@@ -451,6 +472,72 @@ export default function SettingsPage() {
               </p>
             </div>
           </div>
+        </section>
+
+        <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
+          <h2 className="text-sm font-semibold text-[#0F172A]">Booking integrations</h2>
+          <p className="mt-1 text-xs text-[#64748B]">
+            Use these URLs in your booking system to send confirmed bookings to AutoRevenueOS. Only confirmed bookings (not link clicks) trigger billing.
+          </p>
+          {integrationsLoading ? (
+            <p className="mt-4 text-sm text-[#94A3B8]">Loading URLs…</p>
+          ) : bookingIntegrations ? (
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">AutoRevenueOS booking page</label>
+                <p className="mt-1 text-[11px] text-[#94A3B8]">Share this link for customers to confirm; we record one confirmed booking per confirmation.</p>
+                <div className="mt-1.5 flex gap-2">
+                  <input
+                    readOnly
+                    value={bookingIntegrations.booking_page_url}
+                    className="flex-1 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-sm text-[#0F172A] font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(bookingIntegrations.booking_page_url);
+                      setCopiedUrl('booking_page');
+                      setTimeout(() => setCopiedUrl(null), 2000);
+                    }}
+                    className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                  >
+                    {copiedUrl === 'booking_page' ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+              {(['calendly', 'calcom', 'acuity', 'square'] as const).map((key) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">{key} webhook URL</label>
+                  {key === 'square' && bookingIntegrations.hint?.square && (
+                    <p className="mt-0.5 text-[11px] text-amber-700">{bookingIntegrations.hint.square}</p>
+                  )}
+                  {key === 'acuity' && bookingIntegrations.hint?.acuity && (
+                    <p className="mt-0.5 text-[11px] text-amber-700">{bookingIntegrations.hint.acuity}</p>
+                  )}
+                  <div className="mt-1.5 flex gap-2">
+                    <input
+                      readOnly
+                      value={bookingIntegrations.webhooks[key]}
+                      className="flex-1 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-sm text-[#0F172A] font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(bookingIntegrations.webhooks[key]);
+                        setCopiedUrl(key);
+                        setTimeout(() => setCopiedUrl(null), 2000);
+                      }}
+                      className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                    >
+                      {copiedUrl === key ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : !noBusiness && data?.id ? (
+            <p className="mt-4 text-sm text-[#94A3B8]">Could not load URLs. Check you are signed in.</p>
+          ) : null}
         </section>
       </div>
     </div>

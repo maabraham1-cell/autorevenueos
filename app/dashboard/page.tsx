@@ -14,6 +14,8 @@ import {
 
 type DashboardResponse = {
   recovered_leads: number;
+  confirmed_bookings: number;
+  billed_bookings: number;
   estimated_revenue: number;
   cost: number;
   roi: number;
@@ -25,6 +27,21 @@ type DashboardResponse = {
     created_at: string;
     contact_id: string | null;
     channel: string | null;
+  }[];
+  recent_confirmed_bookings: {
+    id: string;
+    confirmed_at: string;
+    confirmation_source: string;
+    billing_status: string;
+    billing_error: string | null;
+    external_booking_id: string | null;
+  }[];
+  recent_billing_events: {
+    id: string;
+    event_type: string;
+    message: string | null;
+    created_at: string;
+    confirmed_booking_id: string | null;
   }[];
   pipeline: {
     contact_id: string | null;
@@ -104,6 +121,8 @@ export default function DashboardPage() {
   }, []);
 
   const recoveredLeads = data?.recovered_leads ?? 0;
+  const confirmedBookings = data?.confirmed_bookings ?? 0;
+  const billedBookings = data?.billed_bookings ?? 0;
   const estimatedRevenue = data?.estimated_revenue ?? 0;
   const cost = data?.cost ?? 0;
   const roi = data?.roi ?? 0;
@@ -111,6 +130,43 @@ export default function DashboardPage() {
   const currencyCode = data?.currency_code ?? 'GBP';
   const locale = data?.locale ?? 'en-GB';
   const pipeline = data?.pipeline ?? [];
+  const recentConfirmed = data?.recent_confirmed_bookings ?? [];
+  const recentBillingEvents = data?.recent_billing_events ?? [];
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  const handleRetryBilling = async (confirmedBookingId: string) => {
+    setRetryError(null);
+    setRetryingId(confirmedBookingId);
+    try {
+      const res = await fetch('/api/billing/retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmed_booking_id: confirmedBookingId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRetryError(json?.error ?? 'Retry failed');
+        return;
+      }
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          recent_confirmed_bookings: prev.recent_confirmed_bookings.map((r) =>
+            r.id === confirmedBookingId ? { ...r, billing_status: 'sent', billing_error: null } : r
+          ),
+          billed_bookings: (prev.billed_bookings ?? 0) + 1,
+        };
+      });
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
+  const failedOrSkippedEvents = recentBillingEvents.filter(
+    (e) => e.event_type === 'meter_failed' || e.event_type === 'meter_skipped_no_customer' || e.event_type === 'duplicate_ignored'
+  );
 
   const estimatedBookings = averageBookingValue > 0 ? Math.round(estimatedRevenue / averageBookingValue) : 0;
 
@@ -187,9 +243,19 @@ export default function DashboardPage() {
             </div>
           </div>
           <MetricCard
-            label="Recovered Leads"
+            label="Recovered leads"
             value={recoveredLeads.toString()}
-            subtitle="Total recovery events for this business"
+            subtitle="Re-engaged leads (attribution only). Never billed."
+          />
+          <MetricCard
+            label="Confirmed bookings"
+            value={confirmedBookings.toString()}
+            subtitle="Actually confirmed (you or integration). May or may not be billed yet."
+          />
+          <MetricCard
+            label="Billed bookings"
+            value={billedBookings.toString()}
+            subtitle="Meter event reported to Stripe. billed_at set (not invoice paid)."
           />
           <MetricCard
             label="AutoRevenueOS Cost"
@@ -202,6 +268,111 @@ export default function DashboardPage() {
             subtitle="Estimated recovered revenue ÷ cost"
           />
         </section>
+
+        <div className="animate-fade-in-up mt-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3 text-xs text-[#475569]">
+          <p className="font-semibold text-[#0F172A] mb-1.5">Definitions</p>
+          <ul className="space-y-1 list-none">
+            <li><strong>Recovered lead</strong> — Re-engaged lead (attribution only). We do not bill on this. Shown for pipeline context.</li>
+            <li><strong>Confirmed booking</strong> — A booking we recorded as confirmed (AutoRevenueOS booking page or integration webhook). Only these can ever be billed.</li>
+            <li><strong>Billed booking</strong> — A confirmed booking for which we successfully reported a meter event to Stripe. <strong>billed_at</strong> means “meter event reported to Stripe” only; it does <strong>not</strong> mean the invoice has been paid.</li>
+          </ul>
+        </div>
+
+        {/* Recent confirmed bookings */}
+        <section className="card-base animate-fade-in-up mt-8 rounded-[14px] p-4 sm:p-6">
+          {retryError && (
+            <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+              {retryError}
+            </p>
+          )}
+          <SectionHeader
+            title="Confirmed bookings"
+            description="Only these rows can trigger billing. Billing status: sent = meter event reported to Stripe (billed_at set); failed = meter call failed (use Retry); skipped = no Stripe customer. billed_at means meter reported only — not invoice paid."
+            rightContent={
+              <p className="text-xs text-[#94A3B8]">
+                Last {recentConfirmed.length} · {confirmedBookings} total
+              </p>
+            }
+          />
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#E5E7EB] bg-[#F8FAFC] text-xs font-medium uppercase tracking-wide text-[#64748B]">
+                  <th className="py-2.5 pr-4 pl-3">Confirmed at</th>
+                  <th className="py-2.5 pr-4">Source</th>
+                  <th className="py-2.5 pr-4">Billing status</th>
+                  <th className="py-2.5 pr-4">External ID</th>
+                  <th className="py-2.5 pr-4 pl-3 w-[100px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentConfirmed.length ? (
+                  recentConfirmed.map((r) => (
+                    <tr key={r.id} className="border-b border-[#E5E7EB] last:border-0 odd:bg-white even:bg-[#F9FAFB]/60">
+                      <td className="py-2.5 pr-4 pl-3 text-[#0F172A]">{formatDate(r.confirmed_at)}</td>
+                      <td className="py-2.5 pr-4 text-[#475569]">{r.confirmation_source}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          r.billing_status === 'sent' ? 'bg-emerald-100 text-emerald-800' :
+                          r.billing_status === 'failed' ? 'bg-red-100 text-red-800' :
+                          r.billing_status === 'skipped' ? 'bg-amber-100 text-amber-800' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          {r.billing_status}
+                        </span>
+                        {r.billing_error && (
+                          <p className="mt-1 text-[11px] text-red-600" title={r.billing_error}>{r.billing_error.slice(0, 60)}{r.billing_error.length > 60 ? '…' : ''}</p>
+                        )}
+                      </td>
+                      <td className="py-2.5 pr-4 text-[#64748B] font-mono text-xs truncate max-w-[120px]" title={r.external_booking_id ?? ''}>
+                        {r.external_booking_id ?? '—'}
+                      </td>
+                      <td className="py-2.5 pr-4 pl-3">
+                        {r.billing_status === 'failed' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRetryBilling(r.id)}
+                            disabled={retryingId === r.id}
+                            className="rounded bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                          >
+                            {retryingId === r.id ? 'Retrying…' : 'Retry billing'}
+                          </button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-sm text-[#94A3B8]">
+                      {loading ? 'Loading…' : 'No confirmed bookings yet.'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Billing events (failed / skipped visibility) */}
+        {failedOrSkippedEvents.length > 0 && (
+          <section className="card-base animate-fade-in-up mt-6 rounded-[14px] border-amber-200 bg-amber-50/50 p-4 sm:p-6">
+            <SectionHeader
+              title="Billing events (failed or skipped)"
+              description="Confirmations that were not reported to Stripe (failed meter call or no stripe_customer_id). Use Retry billing for failed rows. billed_at is only set when the meter event is successfully reported — not when the invoice is paid."
+            />
+            <ul className="mt-4 space-y-2">
+              {failedOrSkippedEvents.slice(0, 10).map((e) => (
+                <li key={e.id} className="flex flex-wrap items-baseline gap-2 rounded-lg bg-white/80 px-3 py-2 text-sm">
+                  <span className="font-medium text-amber-900">{e.event_type}</span>
+                  <span className="text-amber-800">{e.message ?? '—'}</span>
+                  <span className="text-xs text-[#64748B]">{formatDate(e.created_at)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Recent Recoveries */}
         <section className="card-base animate-fade-in-up mt-12 rounded-[14px] p-4 sm:p-6">

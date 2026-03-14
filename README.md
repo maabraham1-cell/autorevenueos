@@ -65,6 +65,19 @@ Before deploying AutoRevenueOS, make sure the following environment variables ar
 - **`WEBSITE_CHAT_NOTIFY_EMAIL`** (server only)  
   - Email address to receive website-chat notifications. Defaults to `hello@autorevenue.com` if not set.
 
+### Booking confirmation and billing
+
+- **`STRIPE_SECRET_KEY`** (server only)  
+  - Used to report `confirmed_bookings` meter events when a trusted booking confirmation is recorded. Required for usage-based billing. Create a meter in Stripe with event name `confirmed_bookings`.
+
+- **`BOOKING_CONFIRM_SECRET`** (server only)  
+  - Secret for signing the AutoRevenueOS booking page confirm token. If unset, `STRIPE_SECRET_KEY` is used. Must be at least 16 characters.
+
+- **`SQUARE_WEBHOOK_SIGNATURE_KEY`** (server only, optional)  
+  - Used to verify Square Appointments webhook signature (`x-square-signature`). Recommended when using Square.
+
+See [docs/BOOKING_CONFIRMATION.md](docs/BOOKING_CONFIRMATION.md) and [docs/BOOKING_INTEGRATIONS.md](docs/BOOKING_INTEGRATIONS.md) for the full booking confirmation architecture and per-provider setup. For a repeatable end-to-end validation of the live billing flow (confirmed success, duplicate, meter failure, retry), see [docs/BOOKING_BILLING_E2E_VALIDATION.md](docs/BOOKING_BILLING_E2E_VALIDATION.md).
+
 ### Webhook Security
 
 - `POST /api/meta-webhook` verifies the Meta webhook signature using `X-Hub-Signature-256` and `META_APP_SECRET`.
@@ -110,7 +123,8 @@ Protected APIs:
 Public endpoints:
 
 - Marketing and landing pages: `/`, `/marketing`, `/login`
-- Webhooks: `/api/missed-call`, `/api/sms-webhook`, `/api/meta-webhook`
+- Booking page: `/book/[businessId]` (confirmation flow we control)
+- Webhooks: `/api/missed-call`, `/api/sms-webhook`, `/api/meta-webhook`, `/api/webhooks/calendly`, `/api/webhooks/calcom`, `/api/webhooks/acuity`, `/api/webhooks/square` (booking confirmations); `/api/webhooks/cliniko`, `/api/webhooks/setmore`, `/api/webhooks/jane`, `/api/webhooks/fresha`, `/api/webhooks/booksy` (scaffolded)
 - Health check: `/api/health`
 
 All business-scoped queries use the authenticated Supabase user and a `profiles` table to resolve the active `business_id`. For a new user, a business is created and linked automatically.

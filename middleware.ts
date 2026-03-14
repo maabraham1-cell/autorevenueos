@@ -18,6 +18,8 @@ const protectedPrefixes = [
   "/api/inbox",
   "/api/recoveries",
   "/api/settings",
+  "/api/booking-integrations",
+  "/api/billing/retry",
   "/api/setup",
   "/api/chat/website/reply",
   "/api/test",
