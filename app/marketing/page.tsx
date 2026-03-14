@@ -34,8 +34,8 @@ export default function MarketingPage() {
               Stop losing revenue to missed calls.
             </h1>
             <p className="mt-4 text-base text-slate-300 sm:text-lg">
-              AutoRevenueOS detects every missed call, sends an instant SMS or WhatsApp, and turns
-              more of those moments into booked appointments — automatically.
+              AutoRevenueOS detects every missed call, sends an instant SMS or WhatsApp with a
+              tracked recovery link, and turns more of those moments into recovered booking leads — automatically.
             </p>
             <div className="mt-6 flex flex-wrap gap-3 text-xs">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-slate-200 ring-1 ring-white/20">
@@ -44,11 +44,11 @@ export default function MarketingPage() {
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-slate-200 ring-1 ring-white/20">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
-                Instant SMS / WhatsApp reply
+                Instant SMS / WhatsApp with recovery link
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-slate-200 ring-1 ring-white/20">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#60A5FA]" />
-                Booked customer, automatically
+                Recovered booking lead
               </span>
             </div>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -56,18 +56,18 @@ export default function MarketingPage() {
                 href="#calculator"
                 className="inline-flex items-center justify-center rounded-xl bg-[#2563EB] px-6 py-3 text-sm font-semibold text-white shadow-[0_0_40px_-8px_rgba(59,130,246,0.6)] transition-all hover:bg-[#3B82F6] hover:shadow-[0_0_48px_-6px_rgba(59,130,246,0.7)]"
               >
-                Get my free revenue check
+                See my potential recovered revenue
               </Link>
               <Link
-                href="/dashboard"
+                href="/login?mode=signup"
                 className="inline-flex items-center justify-center rounded-xl border border-white/25 bg-white/5 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/10 hover:border-white/40"
               >
-                View live recoveries
+                Get started — free to install
               </Link>
             </div>
             <p className="mt-4 text-xs text-slate-400">
-              Built for UK salons, clinics, trades and professional services. Pay only when it
-              books a client.
+              Free to install. Only £3 per recovered booking lead. Built for UK salons, clinics,
+              trades and professional services.
             </p>
           </div>
 
@@ -181,11 +181,11 @@ export default function MarketingPage() {
               How it works
             </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-              From missed call to booked customer in three steps.
+              From missed call to recovered booking lead in three steps.
             </h2>
             <p className="mt-3 text-sm text-slate-300 sm:text-base">
-              AutoRevenueOS runs in the background, watching for missed calls, replying instantly,
-              and nudging customers to book while they&apos;re still warm.
+              AutoRevenueOS runs in the background, watching for missed calls, sending a reply with
+              a tracked recovery link, and nudging customers to re-engage while they&apos;re still warm.
             </p>
           </div>
 
@@ -225,7 +225,7 @@ export default function MarketingPage() {
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
                 Customers receive a friendly SMS or WhatsApp while they&apos;re still ready to
-                book, with a direct link or conversation to confirm a slot.
+                engage, with a tracked recovery link so we can attribute recovered booking leads.
               </p>
             </motion.div>
             <motion.div
@@ -351,7 +351,7 @@ export default function MarketingPage() {
             href="#calculator"
             className="inline-flex items-center justify-center rounded-xl bg-[#1E3A8A] px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-[#1E3A8A]/30 transition-all hover:bg-[#2563EB] hover:shadow-xl hover:shadow-[#1E3A8A]/40"
           >
-            Run your free revenue check
+            See your potential recovered revenue
           </Link>
         </div>
       </section>

@@ -181,7 +181,7 @@ export default function DashboardPage() {
               </p>
               {estimatedBookings > 0 && (
                 <p className="mt-2 text-sm font-semibold text-[#475569]">
-                  ≈ {estimatedBookings} additional booking{estimatedBookings !== 1 ? 's' : ''}
+                  ≈ {estimatedBookings} recovered booking lead{estimatedBookings !== 1 ? 's' : ''}
                 </p>
               )}
             </div>
@@ -278,7 +278,7 @@ export default function DashboardPage() {
           <div className="card-base rounded-[14px] p-4 sm:p-6">
             <SectionHeader
               title="Recovered Revenue Pipeline"
-              description="Track recovered enquiries from reply to confirmed bookings."
+              description="Track recovered enquiries from reply to recovered booking leads."
                 rightContent={
                 <div className="flex flex-wrap gap-2">
                   <PipelineCounter label="Recovered" value={recoveredCount} tone="neutral" />

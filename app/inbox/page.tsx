@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   StatusBadge,
   SummaryPill,
@@ -27,6 +27,7 @@ type InboxConversation = {
   estimated_value: number;
   proof_label: string;
   messages: InboxMessage[];
+  has_unread?: boolean;
 };
 
 function makeConversationKey(c: InboxConversation): string {
@@ -60,55 +61,52 @@ function InboxContent() {
   const [statusFilter, setStatusFilter] = useState<"All" | "Recovered" | "Follow Up" | "Booked">("All");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
+
+  const loadInbox = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/inbox");
+      if (!res.ok) {
+        throw new Error(`Inbox API error: ${res.status}`);
+      }
+      const json = (await res.json()) as InboxConversation[];
+      setConversations(json);
+      setError(null);
+
+      const focusContact = searchParams.get("contact");
+      const focusChannel = searchParams.get("channel");
+      const focusKey =
+        focusContact != null && focusChannel != null
+          ? `${focusContact}::${focusChannel}`
+          : null;
+
+      const hasFocus =
+        focusKey && json.some((c) => makeConversationKey(c) === focusKey);
+
+      setSelectedKey((prev) =>
+        hasFocus
+          ? focusKey!
+          : prev ?? (json.length ? makeConversationKey(json[0]) : null)
+      );
+    } catch (e) {
+      console.error("[inbox] fetch error", e);
+      setError("Failed to load inbox conversations.");
+    } finally {
+      setLoading(false);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
-    let cancelled = false;
+    loadInbox();
+  }, [loadInbox]);
 
-    async function load() {
-      try {
-        setLoading(true);
-        const res = await fetch("/api/inbox");
-        if (!res.ok) {
-          throw new Error(`Inbox API error: ${res.status}`);
-        }
-        const json = (await res.json()) as InboxConversation[];
-        if (cancelled) return;
-        setConversations(json);
-        setError(null);
-
-        const focusContact = searchParams.get("contact");
-        const focusChannel = searchParams.get("channel");
-        const focusKey =
-          focusContact != null && focusChannel != null
-            ? `${focusContact}::${focusChannel}`
-            : null;
-
-        const hasFocus =
-          focusKey && json.some((c) => makeConversationKey(c) === focusKey);
-
-        setSelectedKey((prev) =>
-          hasFocus
-            ? focusKey!
-            : prev ?? (json.length ? makeConversationKey(json[0]) : null)
-        );
-      } catch (e) {
-        console.error("[inbox] fetch error", e);
-        if (!cancelled) {
-          setError("Failed to load inbox conversations.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useEffect(() => {
+    const interval = setInterval(loadInbox, 12_000);
+    return () => clearInterval(interval);
+  }, [loadInbox]);
 
   const selectedConversation: InboxConversation | null = useMemo(() => {
     if (!conversations || conversations.length === 0) return null;
@@ -158,6 +156,51 @@ function InboxContent() {
 
   const hasConversations = (filteredConversations?.length ?? 0) > 0;
 
+  const isWebsiteChat = selectedConversation?.channel === "website_chat";
+  const canReply = isWebsiteChat && selectedConversation?.contact_id;
+
+  async function handleSendReply(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = replyDraft.trim();
+    if (!trimmed || !canReply || sendingReply) return;
+
+    setSendingReply(true);
+    setReplyError(null);
+    try {
+      const res = await fetch("/api/chat/website/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contact_id: selectedConversation!.contact_id,
+          body: trimmed,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Failed to send");
+      }
+      const sent = (await res.json()) as InboxMessage;
+      setReplyDraft("");
+      setConversations((prev) =>
+        prev?.map((c) => {
+          const key = makeConversationKey(c);
+          if (key !== selectedKey) return c;
+          return {
+            ...c,
+            messages: [...c.messages, sent],
+            latest_message: sent.body ?? "",
+            latest_message_at: sent.created_at,
+            has_unread: false,
+          };
+        }) ?? null
+      );
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "Failed to send reply");
+    } finally {
+      setSendingReply(false);
+    }
+  }
+
   return (
     <div className="px-4 py-8 bg-[#020617] bg-[radial-gradient(ellipse_at_top,_rgba(37,99,235,0.24),transparent_60%)] sm:px-6 lg:px-8 lg:py-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col rounded-[18px] border border-[#E5E7EB]/80 bg-white/95 px-4 py-8 shadow-[0_32px_80px_rgba(15,23,42,0.55)] sm:px-6 lg:px-8">
@@ -203,7 +246,7 @@ function InboxContent() {
           <SummaryPill
             label="Booked"
             value={bookedCount}
-            subtitle="Likely converted to a booking"
+            subtitle="Likely converted to a recovered booking opportunity"
             isRevenue
           />
         </section>
@@ -281,6 +324,12 @@ function InboxContent() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
+                            {conv.has_unread && (
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full bg-[#2563EB]"
+                                aria-label="Unread"
+                              />
+                            )}
                             <span className="text-sm font-semibold text-[#0F172A]">
                               {conv.contact_label}
                             </span>
@@ -342,7 +391,7 @@ function InboxContent() {
                     </div>
                   </div>
 
-                  <div className="mt-4 max-h-[520px] space-y-4 overflow-y-auto rounded-2xl bg-[#F9FAFB] px-3 py-3 pr-1 sm:mt-5 sm:px-4 sm:py-4">
+                  <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto rounded-2xl bg-[#F9FAFB] px-3 py-3 pr-1 sm:mt-5 sm:px-4 sm:py-4">
                     {selectedConversation.messages.map((msg) => {
                       const isOutbound = msg.direction === "outbound";
                       const bubbleBase =
@@ -366,7 +415,7 @@ function InboxContent() {
                                 ? "You"
                                 : selectedConversation.contact_label || "Customer"}
                             </p>
-                            <div className={bubbleBase + " " + bubbleColors}>
+                            <div className={bubbleBase + " " + bubbleColors + (isOutbound ? " text-center" : "")}>
                               <p className="whitespace-pre-wrap">
                                 {msg.body ||
                                   (isOutbound
@@ -382,6 +431,37 @@ function InboxContent() {
                       );
                     })}
                   </div>
+
+                  {canReply && (
+                    <form
+                      onSubmit={handleSendReply}
+                      className="mt-4 border-t border-[#E5E7EB] pt-4"
+                    >
+                      {replyError && (
+                        <p className="mb-2 text-xs text-red-600">{replyError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <textarea
+                          rows={2}
+                          value={replyDraft}
+                          onChange={(e) => setReplyDraft(e.target.value)}
+                          placeholder="Reply to website visitor…"
+                          className="min-w-0 flex-1 rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                          disabled={sendingReply}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!replyDraft.trim() || sendingReply}
+                          className="shrink-0 self-end rounded-xl bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {sendingReply ? "Sending…" : "Send"}
+                        </button>
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-[#64748B]">
+                        Replies appear in the visitor&apos;s chat widget within a few seconds.
+                      </p>
+                    </form>
+                  )}
                 </>
               ) : (
                 <div className="flex h-full items-center justify-center py-16">

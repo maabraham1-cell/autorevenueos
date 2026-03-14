@@ -2,6 +2,7 @@ import twilio from "twilio";
 
 type SendRecoverySmsArgs = {
   to: string;
+  fromNumber: string;
   businessName: string;
   bookingLink: string | null;
 };
@@ -17,7 +18,6 @@ type SendRecoverySmsResult = {
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromNumberRaw = process.env.TWILIO_PHONE_NUMBER;
 
 const client =
   accountSid && authToken
@@ -26,6 +26,7 @@ const client =
 
 export async function sendRecoverySms({
   to,
+  fromNumber,
   businessName,
   bookingLink,
 }: SendRecoverySmsArgs): Promise<SendRecoverySmsResult> {
@@ -35,13 +36,11 @@ export async function sendRecoverySms({
     );
   }
 
-  if (!fromNumberRaw) {
-    throw new Error(
-      "TWILIO_PHONE_NUMBER is not set. Please configure your Twilio from number.",
-    );
+  const from = fromNumber.replace(/\s+/g, "");
+  if (!from) {
+    throw new Error("From number is required to send recovery SMS.");
   }
 
-  const from = fromNumberRaw.replace(/\s+/g, "");
   const toNormalized = to.replace(/\s+/g, "");
 
   const body = `Sorry we missed your call to ${businessName}. You can book here: ${

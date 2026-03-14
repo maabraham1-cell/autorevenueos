@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { sendEmail } from "@/lib/email";
 
 type WebsiteMessage = {
   id: string;
@@ -23,9 +24,17 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { user, business } = await getCurrentUserAndBusiness(request);
+  let { user, business } = await getCurrentUserAndBusiness(request);
+  if (!business && process.env.NEXT_PUBLIC_WEBSITE_CHAT_BUSINESS_ID) {
+    const { data: fallback } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("id", process.env.NEXT_PUBLIC_WEBSITE_CHAT_BUSINESS_ID)
+      .maybeSingle();
+    if (fallback) business = fallback as any;
+  }
 
-  if (!user || !business) {
+  if (!business) {
     return NextResponse.json<WebsiteMessage[]>([], { status: 200 });
   }
 
@@ -33,6 +42,7 @@ export async function GET(request: NextRequest) {
     .from("contacts")
     .select("id")
     .eq("business_id", business.id)
+    .eq("channel", CHANNEL)
     .eq("external_id", visitorId)
     .maybeSingle();
 
@@ -106,23 +116,44 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { user, business } = await getCurrentUserAndBusiness(request);
-  if (!user || !business) {
+  let { user, business } = await getCurrentUserAndBusiness(request);
+  if (!business && process.env.NEXT_PUBLIC_WEBSITE_CHAT_BUSINESS_ID) {
+    const { data: fallback } = await supabase
+      .from("businesses")
+      .select("id")
+      .eq("id", process.env.NEXT_PUBLIC_WEBSITE_CHAT_BUSINESS_ID)
+      .maybeSingle();
+    if (fallback) business = fallback as any;
+  }
+
+  if (!business) {
     return NextResponse.json(
-      { error: "Not authenticated or no business configured" },
-      { status: 401 },
+      { error: "Chat is not configured. Please try again later." },
+      { status: 503 },
     );
   }
 
   const text = message.slice(0, 2000);
 
   // Find or create contact for this visitor
-  const { data: existingContact, error: contactLookupError } = await supabase
+  let existingContact: { id: string } | null = null;
+  const { data: byChannelExternalId, error: contactLookupError } = await supabase
     .from("contacts")
     .select("id")
     .eq("business_id", business.id)
+    .eq("channel", CHANNEL)
     .eq("external_id", visitorId)
     .maybeSingle();
+  existingContact = byChannelExternalId;
+  if (!existingContact) {
+    const { data: byExternalIdOnly } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("external_id", visitorId)
+      .maybeSingle();
+    existingContact = byExternalIdOnly;
+  }
 
   if (contactLookupError) {
     console.error(
@@ -142,6 +173,7 @@ export async function POST(request: NextRequest) {
       .from("contacts")
       .insert({
         business_id: business.id,
+        channel: CHANNEL,
         external_id: visitorId,
         name: "Website visitor",
       })
@@ -190,6 +222,33 @@ export async function POST(request: NextRequest) {
     created_at: inserted.created_at as string,
   };
 
+  // Notify admin when website chat hits the inbox (profile_admin notification).
+  const notifyTo = process.env.WEBSITE_CHAT_NOTIFY_EMAIL ?? "hello@autorevenue.com";
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://www.autorevenueos.com");
+  const inboxUrl = `${baseUrl}/inbox`;
+  const preview = text.slice(0, 200) + (text.length > 200 ? "…" : "");
+  await sendEmail({
+    to: notifyTo,
+    subject: `[AutoRevenueOS] New website chat message`,
+    html: `
+      <p>A visitor used the website chat and their message is in the Inbox.</p>
+      <p><strong>Message preview:</strong></p>
+      <p>${escapeHtml(preview)}</p>
+      <p><a href="${inboxUrl}">Open Inbox</a></p>
+      <p style="color:#64748b;font-size:12px;">AutoRevenueOS website chat</p>
+    `.trim(),
+  }).catch((e) => console.error("[website chat] notify email error:", e));
+
   return NextResponse.json(shaped, { status: 201 });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 

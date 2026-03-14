@@ -248,7 +248,7 @@ export default function RecoveriesPage() {
               </p>
               {estimatedBookings > 0 && (
                 <p className="mt-2 text-sm font-semibold text-[#475569]">
-                  ≈ {estimatedBookings} additional booking{estimatedBookings !== 1 ? "s" : ""}
+                  ≈ {estimatedBookings} recovered booking lead{estimatedBookings !== 1 ? "s" : ""}
                 </p>
               )}
             </div>
@@ -275,7 +275,7 @@ export default function RecoveriesPage() {
           <SummaryPill
             label="Booked"
             value={bookedCount}
-            subtitle="Recovered revenue likely converted to bookings"
+            subtitle="Recovered revenue likely converted to booking opportunities"
             isRevenue
           />
           <SummaryPill

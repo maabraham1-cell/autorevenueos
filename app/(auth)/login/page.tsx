@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { trackEvent } from '@/lib/ga4';
 
 function LoginForm() {
   const supabase = createSupabaseBrowserClient();
@@ -54,6 +55,7 @@ function LoginForm() {
         });
         if (error) throw error;
         setEmailVerificationSent(email);
+        trackEvent('signup_completed');
         return;
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -73,13 +75,13 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#020617] px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-[#020617] px-4 py-10 sm:py-14">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl sm:p-8">
         <h1 className="text-2xl font-bold text-[#0F172A]">
-          {mode === 'login' ? 'Log in to AutoRevenueOS' : 'Start your free trial'}
+          {mode === 'login' ? 'Log in to AutoRevenueOS' : 'Create your AutoRevenueOS account'}
         </h1>
         <p className="mt-1 text-sm text-[#64748B]">
-          Use your work email to access your AutoRevenueOS workspace.
+          Free to install. Only £3 per recovered booking lead. Use your work email to get started.
         </p>
 
         {emailVerificationSent && (
@@ -91,7 +93,7 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => setEmailVerificationSent(null)}
-              className="mt-2 text-xs font-medium text-[#15803D] underline hover:no-underline"
+              className="mt-2 cursor-pointer text-xs font-medium text-[#15803D] underline hover:no-underline"
             >
               Dismiss
             </button>
@@ -117,7 +119,7 @@ function LoginForm() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="e.g. Alex Smith"
+                  placeholder="Alex Smith"
                 />
               </div>
               <div>
@@ -130,7 +132,7 @@ function LoginForm() {
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="e.g. Oakwood Dental Clinic"
+                  placeholder="Oakwood Dental Clinic"
                 />
               </div>
               <div>
@@ -179,7 +181,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-[#1E3A8A] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
+            className="w-full cursor-pointer rounded-lg bg-[#1E3A8A] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading
               ? 'Please wait…'
@@ -191,13 +193,13 @@ function LoginForm() {
 
         <button
           type="button"
-          className="mt-4 w-full text-center text-xs text-[#64748B]"
+          className="mt-4 w-full cursor-pointer text-center text-xs text-[#64748B] transition-colors hover:text-[#2563EB] hover:underline"
           onClick={() =>
             setMode((m) => (m === 'login' ? 'signup' : 'login'))
           }
         >
           {mode === 'login'
-            ? 'New here? Start a free trial'
+            ? 'New here? Create an account'
             : 'Already have an account? Log in'}
         </button>
       </div>
@@ -209,8 +211,8 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#020617] px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <div className="flex min-h-screen items-center justify-center bg-[#020617] px-4 py-10 sm:py-14">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl sm:p-8">
             <p className="text-center text-sm text-[#64748B]">Loading…</p>
           </div>
         </div>

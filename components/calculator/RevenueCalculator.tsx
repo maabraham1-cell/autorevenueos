@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { trackEvent } from '@/lib/ga4';
 
 const RECOVERY_RATE = 0.35;
-const PER_BOOKING_FEE = 3;
-const SETUP_FEE = 49;
+const PER_RECOVERED_LEAD_GBP = 3;
 const WEEKS_PER_MONTH = 4.33;
 
 const INDUSTRIES = [
@@ -49,14 +50,22 @@ export function RevenueCalculator() {
   const [missedCallsPerWeek, setMissedCallsPerWeek] = useState<number>(0);
   const [averageBookingValue, setAverageBookingValue] = useState<number>(0);
   const [industry, setIndustry] = useState<string>('Dental');
+  const calculatorTrackedRef = useRef(false);
+
+  useEffect(() => {
+    if (calculatorTrackedRef.current) return;
+    if (missedCallsPerWeek >= 1 && averageBookingValue >= 1) {
+      calculatorTrackedRef.current = true;
+      trackEvent('calculator_used');
+    }
+  }, [missedCallsPerWeek, averageBookingValue]);
 
   const monthlyCalls = missedCallsPerWeek * WEEKS_PER_MONTH;
   const revenueAtRisk = monthlyCalls * averageBookingValue;
-  const recoveredRevenue = revenueAtRisk * RECOVERY_RATE;
-  const recoveredBookings = monthlyCalls * RECOVERY_RATE;
-  const monthlySetup = SETUP_FEE / 12;
-  const fees = recoveredBookings * PER_BOOKING_FEE + monthlySetup;
-  const netProfit = Math.max(0, recoveredRevenue - fees);
+  const estimatedRecoveredLeads = monthlyCalls * RECOVERY_RATE;
+  const estimatedRecoveredRevenue = estimatedRecoveredLeads * averageBookingValue;
+  const autorevenueosFee = estimatedRecoveredLeads * PER_RECOVERED_LEAD_GBP;
+  const netRecoveredRevenue = Math.max(0, estimatedRecoveredRevenue - autorevenueosFee);
 
   return (
     <div
@@ -322,13 +331,10 @@ export function RevenueCalculator() {
                 }}
               >
                 <div>
-                  Setup fee: <strong>£49</strong> (one-time)
+                  Free to install. Per recovered booking lead: <strong>£3</strong>
                 </div>
                 <div>
-                  Per recovered booking: <strong>£3</strong>
-                </div>
-                <div>
-                  Recovery rate: <strong>35%</strong> (fixed industry standard)
+                  Recovery rate: <strong>35%</strong> (industry benchmark)
                 </div>
               </div>
             </div>
@@ -415,7 +421,7 @@ export function RevenueCalculator() {
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                <AnimatedNumber value={recoveredRevenue} />
+                <AnimatedNumber value={estimatedRecoveredRevenue} />
               </div>
               <div
                 style={{
@@ -424,11 +430,57 @@ export function RevenueCalculator() {
                   color: '#64748B',
                 }}
               >
-                We use 35% recovery rate.
+                Based on ~{Math.round(estimatedRecoveredLeads)} recovered booking leads at 35% rate.
               </div>
             </div>
 
-            {/* Net Profit */}
+            {/* AutoRevenueOS fee */}
+            <div
+              style={{
+                background: '#fff',
+                border: '1px solid #E5E7EB',
+                borderLeft: '4px solid #F59E0B',
+                borderRadius: '16px',
+                padding: '16px 18px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
+                marginBottom: '12px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '13px',
+                  color: '#6B7280',
+                  fontWeight: 600,
+                  letterSpacing: '.02em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                AutoRevenueOS fee (£3 per recovered lead)
+              </div>
+              <div
+                style={{
+                  fontSize: '32px',
+                  lineHeight: 1.1,
+                  fontWeight: 800,
+                  color: '#0F172A',
+                  marginTop: '6px',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                <AnimatedNumber value={autorevenueosFee} />
+              </div>
+              <div
+                style={{
+                  marginTop: '6px',
+                  fontSize: '12px',
+                  color: '#64748B',
+                }}
+              >
+                Only when a booking is recovered through AutoRevenueOS.
+              </div>
+            </div>
+
+            {/* Net recovered revenue */}
             <div
               style={{
                 background: '#fff',
@@ -449,7 +501,7 @@ export function RevenueCalculator() {
                   textTransform: 'uppercase',
                 }}
               >
-                Estimated net profit (monthly)
+                Net recovered revenue (after AutoRevenueOS fee)
               </div>
               <div
                 style={{
@@ -461,7 +513,7 @@ export function RevenueCalculator() {
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                <AnimatedNumber value={netProfit} />
+                <AnimatedNumber value={netRecoveredRevenue} />
               </div>
               <div
                 style={{
@@ -470,13 +522,15 @@ export function RevenueCalculator() {
                   color: '#64748B',
                 }}
               >
-                After £3/booking fee + setup fee (amortised).
+                After £3 per recovered booking lead.
               </div>
             </div>
 
             {/* CTA Button */}
-            <button
+            <Link
+              href="/login?mode=signup"
               style={{
+                display: 'block',
                 width: '100%',
                 border: 'none',
                 borderRadius: '10px',
@@ -490,10 +544,12 @@ export function RevenueCalculator() {
                 marginTop: '10px',
                 filter: 'brightness(1)',
                 transition: 'filter .15s ease',
+                textAlign: 'center',
+                textDecoration: 'none',
               }}
             >
-              See My Lost Revenue
-            </button>
+              Get started with AutoRevenueOS
+            </Link>
             <div
               style={{
                 textAlign: 'center',
@@ -502,7 +558,7 @@ export function RevenueCalculator() {
                 marginTop: '10px',
               }}
             >
-              No spam. We'll use your answers to tailor the setup.
+              Free to install. Only £3 per recovered booking lead.
             </div>
           </div>
         </div>

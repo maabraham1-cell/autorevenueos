@@ -10,6 +10,8 @@ import { supabase } from "@/lib/supabase";
 import { sendMetaReply } from "@/lib/meta";
 import crypto from "crypto";
 
+const META_CHANNEL = "meta";
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const mode = searchParams.get("hub.mode");
@@ -180,21 +182,48 @@ async function processMessagingEvent(
     return;
   }
 
-  // Create or reuse contact (by business_id + phone/sender id).
+  const messageMid = typeof message?.mid === "string" ? message.mid.trim() : null;
+  if (messageMid) {
+    const { data: existingMessage } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("external_id", messageMid)
+      .maybeSingle();
+    if (existingMessage) {
+      console.log("[meta-webhook] duplicate message (mid) ignored", { requestId, mid: messageMid });
+      return;
+    }
+  }
+
   let contact: { id: string } | null = null;
-  const { data: existing } = await supabase
+  const { data: existingByExternalId } = await supabase
     .from("contacts")
     .select("id")
     .eq("business_id", business.id)
-    .eq("phone", senderId)
+    .eq("channel", META_CHANNEL)
+    .eq("external_id", senderId)
     .maybeSingle();
-  if (existing) {
-    contact = existing;
+  if (existingByExternalId) {
+    contact = existingByExternalId;
   } else {
+    const { data: existingByPhone } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("phone", senderId)
+      .maybeSingle();
+    if (existingByPhone) {
+      contact = existingByPhone;
+    }
+  }
+  if (!contact) {
     const { data: inserted, error: insertContactError } = await supabase
       .from("contacts")
       .insert({
         business_id: business.id,
+        channel: META_CHANNEL,
+        external_id: senderId,
         phone: senderId,
         name: null,
       })
@@ -212,7 +241,7 @@ async function processMessagingEvent(
     .insert({
       business_id: business.id,
       contact_id: contact.id,
-      source_channel: "meta",
+      source_channel: META_CHANNEL,
       event_type: "incoming_message",
       payload: webhookSnippet,
     })
@@ -224,13 +253,13 @@ async function processMessagingEvent(
     return;
   }
 
-  // Log the current inbound message.
   const { error: messageError } = await supabase.from("messages").insert({
     business_id: business.id,
     contact_id: contact.id,
-    channel: "meta",
+    channel: META_CHANNEL,
     direction: "inbound",
     body: messageText,
+    external_id: messageMid,
   });
   if (messageError) {
     console.error("[meta-webhook] Message insert error:", { requestId, error: messageError.message });
@@ -239,7 +268,7 @@ async function processMessagingEvent(
       requestId,
       businessId: business.id,
       contactId: contact.id,
-      channel: "meta",
+      channel: META_CHANNEL,
       direction: "inbound",
     });
   }
@@ -250,7 +279,7 @@ async function processMessagingEvent(
     .select("id")
     .eq("business_id", business.id)
     .eq("contact_id", contact.id)
-    .eq("channel", "meta")
+    .eq("channel", META_CHANNEL)
     .eq("direction", "outbound")
     .limit(1)
     .maybeSingle();
@@ -265,7 +294,7 @@ async function processMessagingEvent(
     .select("*", { count: "exact", head: true })
     .eq("business_id", business.id)
     .eq("contact_id", contact.id)
-    .eq("channel", "meta")
+    .eq("channel", META_CHANNEL)
     .eq("direction", "inbound");
   if (inboundCountError) {
     console.error("[meta-webhook] inboundCount lookup error:", inboundCountError.message);
@@ -326,7 +355,7 @@ async function processMessagingEvent(
     const { error: outboundMessageError } = await supabase.from("messages").insert({
       business_id: business.id,
       contact_id: contact.id,
-      channel: "meta",
+      channel: META_CHANNEL,
       direction: "outbound",
       body: replyText,
     });

@@ -2,9 +2,14 @@ import type { NextConfig } from "next";
 import path from "path";
 import { existsSync } from "fs";
 
-// If file MAINTENANCE exists in project root, next build will set MAINTENANCE_MODE=1 (site shows offline page in production).
-const maintenanceFile = path.join(process.cwd(), "MAINTENANCE");
-const maintenanceMode = existsSync(maintenanceFile) ? "1" : "0";
+// If file MAINTENANCE exists in project root, next build sets MAINTENANCE_MODE=1 (site shows offline in production).
+let maintenanceMode = "0";
+try {
+  const maintenanceFile = path.join(process.cwd(), "MAINTENANCE");
+  if (existsSync(maintenanceFile)) maintenanceMode = "1";
+} catch {
+  // ignore; default to off
+}
 
 const nextConfig: NextConfig = {
   env: {

@@ -15,10 +15,12 @@ type InboxConversation = {
   channel: string | null;
   latest_message: string;
   latest_message_at: string;
+  latest_message_direction: string;
   recovery_status: string;
   estimated_value: number;
   proof_label: string;
   messages: InboxMessage[];
+  has_unread: boolean;
 };
 
 type ConversationAccumulator = {
@@ -27,6 +29,7 @@ type ConversationAccumulator = {
   messages: InboxMessage[];
   latest_message: string;
   latest_message_at: string;
+  latest_message_direction: string;
 };
 
 export async function GET(request: NextRequest) {
@@ -117,6 +120,7 @@ export async function GET(request: NextRequest) {
           messages: [],
           latest_message: msg.body ?? "",
           latest_message_at: msg.created_at,
+          latest_message_direction: msg.direction,
         };
         conversationMap.set(key, conv);
       }
@@ -126,6 +130,7 @@ export async function GET(request: NextRequest) {
       if (new Date(msg.created_at) >= new Date(conv.latest_message_at)) {
         conv.latest_message = msg.body ?? "";
         conv.latest_message_at = msg.created_at;
+        conv.latest_message_direction = msg.direction;
       }
     }
 
@@ -188,16 +193,19 @@ export async function GET(request: NextRequest) {
         proof_label = "Replied after auto-response";
       }
 
+      const latestDirection = conv.latest_message_direction ?? "inbound";
       conversations.push({
         contact_id: conv.contact_id,
-        contact_label: "", // filled after sorting based on channel/position
+        contact_label: "",
         channel: conv.channel,
         latest_message: conv.latest_message || latestText,
         latest_message_at: conv.latest_message_at,
+        latest_message_direction: latestDirection,
         recovery_status: status,
         estimated_value: averageBookingValue,
         proof_label,
         messages: conv.messages,
+        has_unread: latestDirection === "inbound",
       });
     }
 
@@ -207,13 +215,14 @@ export async function GET(request: NextRequest) {
         new Date(a.latest_message_at).getTime()
     );
 
-    // Friendly contact labels: avoid exposing raw UUIDs.
     let customerIndex = 1;
     for (const conv of conversations) {
       if (conv.channel === "meta") {
         conv.contact_label = "Messenger user";
       } else if (conv.channel === "sms") {
         conv.contact_label = "SMS lead";
+      } else if (conv.channel === "website_chat") {
+        conv.contact_label = "Website visitor";
       } else {
         conv.contact_label = `Customer #${String(customerIndex)}`;
         customerIndex += 1;

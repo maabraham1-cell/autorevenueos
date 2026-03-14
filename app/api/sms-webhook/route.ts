@@ -2,13 +2,16 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { verifyTwilioRequest } from "@/lib/twilioWebhook";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { normalizePhone } from "@/lib/phone";
+
+const SMS_CHANNEL = "sms";
 
 async function getBusinessForTwilio(toNumber: string | null) {
   let business: any = null;
   let errorOut: any = null;
 
   if (toNumber) {
-    const normalized = toNumber.replace(/\s+/g, "");
+    const normalized = normalizePhone(toNumber);
     const { data, error } = await supabase
       .from("businesses")
       .select("*")
@@ -22,17 +25,6 @@ async function getBusinessForTwilio(toNumber: string | null) {
         toNumber: normalized,
       });
     }
-  }
-
-  if (!business) {
-    const { data, error } = await supabase
-      .from("businesses")
-      .select("*")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    business = data;
-    errorOut = errorOut ?? error;
   }
 
   if (errorOut) {
@@ -138,10 +130,10 @@ export async function POST(request: Request) {
     });
 
     if (!business) {
-      console.error("[sms-webhook] no active business configured", {
+      console.warn("[sms-webhook] no business configured for this number", {
         requestId,
       });
-      finalStatus = 500;
+      finalStatus = 404;
       return new NextResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
         {
@@ -181,29 +173,42 @@ export async function POST(request: Request) {
       }
     }
 
-    const normalizedFrom = from.replace(/\s+/g, "");
-
-    const {
-      data: existingContact,
-      error: contactError,
-    } = await supabase
-      .from("contacts")
-      .select("*")
-      .eq("business_id", business.id)
-      .eq("phone", normalizedFrom)
-      .maybeSingle();
-
-    if (contactError) {
-      console.error(
-        "[sms-webhook] contact lookup error:",
-        contactError.message
+    const normalizedFrom = normalizePhone(from);
+    if (!normalizedFrom) {
+      console.error("[sms-webhook] invalid From number", { requestId });
+      finalStatus = 400;
+      return new NextResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        { status: finalStatus, headers: { "Content-Type": "text/xml" } },
       );
-    } else {
-      console.log("[sms-webhook] contact lookup result:", {
-        requestId,
-        contactId: existingContact?.id ?? null,
-      });
     }
+
+    let existingContact: { id: string } | null = null;
+    const { data: byExternalId } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("business_id", business.id)
+      .eq("channel", SMS_CHANNEL)
+      .eq("external_id", normalizedFrom)
+      .maybeSingle();
+    existingContact = byExternalId;
+    if (!existingContact) {
+      const { data: byPhone, error: contactError } = await supabase
+        .from("contacts")
+        .select("id")
+        .eq("business_id", business.id)
+        .eq("phone", normalizedFrom)
+        .maybeSingle();
+      if (contactError) {
+        console.error("[sms-webhook] contact lookup error:", contactError.message);
+      }
+      existingContact = byPhone;
+    }
+
+    console.log("[sms-webhook] contact lookup result:", {
+      requestId,
+      contactId: existingContact?.id ?? null,
+    });
 
     let contactId = existingContact?.id as string | undefined;
 
@@ -212,6 +217,8 @@ export async function POST(request: Request) {
         .from("contacts")
         .insert({
           business_id: business.id,
+          channel: SMS_CHANNEL,
+          external_id: normalizedFrom,
           phone: normalizedFrom,
           name: "SMS lead",
         })

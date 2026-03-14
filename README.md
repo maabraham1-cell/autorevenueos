@@ -53,6 +53,18 @@ Before deploying AutoRevenueOS, make sure the following environment variables ar
 - **`META_PAGE_ACCESS_TOKEN`** (server only)  
   - Access token used to send replies via the Meta Graph API.
 
+### Optional
+
+- **`NEXT_PUBLIC_GA_MEASUREMENT_ID`** (exposed to client)  
+  - Google Analytics 4 measurement ID (e.g. `G-XXXXXXXXXX`).  
+  - If set, GA4 is loaded only on the marketing site and login page when the user has accepted cookies; IP is anonymised and only a minimal set of events is tracked.
+
+- **`RESEND_API_KEY`** (server only)  
+  - Resend.com API key for sending email. If set, a notification is sent to `WEBSITE_CHAT_NOTIFY_EMAIL` (default `hello@autorevenue.com`) when someone sends a message via the website chat (so it appears in the Inbox).
+
+- **`WEBSITE_CHAT_NOTIFY_EMAIL`** (server only)  
+  - Email address to receive website-chat notifications. Defaults to `hello@autorevenue.com` if not set.
+
 ### Webhook Security
 
 - `POST /api/meta-webhook` verifies the Meta webhook signature using `X-Hub-Signature-256` and `META_APP_SECRET`.

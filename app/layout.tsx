@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/layout/AppShell";
+import { CookieConsentBanner } from "@/components/CookieConsentBanner";
+import { GA4Loader } from "@/components/GA4Loader";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AutoRevenueOS | Recover Missed Revenue",
-  description: "Turn missed enquiries into recovered revenue. AutoRevenueOS automatically re-engages leads and tracks conversions.",
+  description: "Stop losing revenue to missed calls. Free to install. Only £3 per recovered booking lead. AutoRevenueOS re-engages leads via tracked recovery links.",
   icons: [
     { rel: "icon", url: "/favicon.svg", type: "image/svg+xml" },
     { rel: "icon", url: "/favicon.ico", sizes: "any" },
@@ -33,6 +35,8 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AppShell>{children}</AppShell>
+        <CookieConsentBanner />
+        <GA4Loader />
       </body>
     </html>
   );

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
+import { normalizePhone } from "@/lib/phone";
 
 export async function GET(request: NextRequest) {
   try {
@@ -145,8 +146,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (typeof body.twilio_phone_number === "string") {
-      const raw = body.twilio_phone_number.trim();
-      const normalized = raw.replace(/\s+/g, "");
+      const normalized = normalizePhone(body.twilio_phone_number);
       updates.twilio_phone_number = normalized || null;
     }
 

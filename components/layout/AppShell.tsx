@@ -2,13 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import type { User } from '@supabase/supabase-js';
+import { isGa4AllowedPath, trackEvent } from '@/lib/ga4';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   const isMarketing =
     pathname === '/' ||
@@ -16,6 +19,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname?.startsWith('/marketing#') ||
     pathname?.startsWith('/#');
   const isApp = !isMarketing && pathname !== '/login';
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error?.message?.includes('Refresh Token') || error?.message?.includes('refresh_token')) {
+        supabase.auth.signOut().then(() => setUser(null));
+        return;
+      }
+      setUser(session?.user ?? null);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   async function handleLogout() {
     const supabase = createSupabaseBrowserClient();
@@ -79,7 +99,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   Log out
                 </button>
               )}
-              {isMarketing ? (
+              {isMarketing && user ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="ml-2 hidden rounded-lg px-3 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:inline-flex"
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="ml-2 hidden rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#64748B] shadow-sm transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:inline-flex"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : null}
+              {isMarketing && !user ? (
                 <>
                   <Link
                     href="/login"
@@ -89,11 +126,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                   <Link
                     href="/login?mode=signup"
+                    onClick={() => isGa4AllowedPath(pathname) && trackEvent('signup_started')}
                     className="ml-2 hidden items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md sm:inline-flex"
                   >
-                    Start free trial
+                    Get started
                   </Link>
                 </>
+              ) : null}
+              {isApp ? (
+                <Link
+                  href="/marketing"
+                  className="ml-2 hidden rounded-lg px-3 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:inline-flex"
+                >
+                  View website
+                </Link>
               ) : null}
             </div>
 
@@ -150,7 +196,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     Log out
                   </button>
                 )}
-                {isMarketing ? (
+                {isMarketing && user ? (
+                  <>
+                    <Link
+                      href="/dashboard"
+                      onClick={() => setMobileOpen(false)}
+                      className="mt-1 inline-flex w-full items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#64748B]"
+                    >
+                      Dashboard
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleLogout()}
+                      className="mt-1 inline-flex w-full items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#64748B]"
+                    >
+                      Log out
+                    </button>
+                  </>
+                ) : null}
+                {isMarketing && !user ? (
                   <>
                     <Link
                       href="/login"
@@ -161,21 +225,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </Link>
                     <Link
                       href="/login?mode=signup"
-                      onClick={() => setMobileOpen(false)}
+                      onClick={() => {
+                        if (isGa4AllowedPath(pathname)) trackEvent('signup_started');
+                        setMobileOpen(false);
+                      }}
                       className="mt-1 inline-flex items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md"
                     >
-                      Start free trial
+                      Get started
                     </Link>
                   </>
-                ) : (
+                ) : null}
+                {isApp ? (
                   <Link
                     href="/marketing"
                     onClick={() => setMobileOpen(false)}
                     className="mt-1 inline-flex items-center justify-center rounded-lg bg-[#1E3A8A] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#2563EB] hover:shadow-md"
                   >
-                    Go to marketing site
+                    View website
                   </Link>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
@@ -187,8 +255,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span>© 2026 AutoRevenue Systems Ltd. AutoRevenueOS™. All rights reserved.</span>
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-[11px] text-[#9CA3AF]">
-              AutoRevenueOS uses local storage for the website chat visitor ID and standard analytics/logging for reliability.
+              We use essential cookies for login and local storage for the website chat. See our{' '}
+              <a href="/cookies" className="font-medium text-[#4B5563] underline-offset-2 hover:text-[#111827] hover:underline">
+                Cookie Policy
+              </a>.
             </span>
+            <a
+              href="/cookies"
+              className="text-[11px] font-medium text-[#4B5563] underline-offset-2 hover:text-[#111827] hover:underline"
+            >
+              Cookie Policy
+            </a>
             <a
               href="/privacy"
               className="text-[11px] font-medium text-[#4B5563] underline-offset-2 hover:text-[#111827] hover:underline"

@@ -13,17 +13,38 @@ const protectedPrefixes = [
   "/inbox",
   "/recoveries",
   "/settings",
+  "/admin",
   "/api/dashboard",
   "/api/inbox",
   "/api/recoveries",
   "/api/settings",
   "/api/setup",
-  "/api/chat/website",
+  "/api/chat/website/reply",
   "/api/test",
+  "/api/admin",
 ];
+
+const adminPrefixes = ["/admin", "/api/admin"];
+
+function isAdminPath(pathname: string): boolean {
+  return adminPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + "/"),
+  );
+}
+
+function isLocalHost(req: NextRequest): boolean {
+  const host = req.headers.get("host") ?? "";
+  return host.startsWith("localhost") || host.startsWith("127.0.0.1");
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Maintenance mode: show offline page in production; localhost always works
+  const maintenance = process.env.MAINTENANCE_MODE === "1" || process.env.MAINTENANCE_MODE === "true";
+  if (maintenance && !isLocalHost(req) && pathname !== "/maintenance") {
+    return NextResponse.rewrite(new URL("/maintenance", req.url));
+  }
 
   const isProtected = protectedPrefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(prefix + "/"),
@@ -57,6 +78,25 @@ export async function middleware(req: NextRequest) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("redirectTo", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  if (isAdminPath(pathname)) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const role = (profile?.role as string) ?? "owner";
+    if (role !== "platform_admin") {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { error: "Forbidden. Platform admin access required." },
+          { status: 403 },
+        );
+      }
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
   }
 
   return res;

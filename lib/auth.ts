@@ -31,9 +31,11 @@ export type BusinessRow = {
  * Lazily creates a business + profile if the user has none (post signup).
  * Uses the same session-aware client for all DB ops so RLS sees the user.
  */
+export type ProfileRole = "platform_admin" | "owner" | "member";
+
 export async function getCurrentUserAndBusiness(
   request: NextRequest
-): Promise<{ user: User | null; business: BusinessRow | null }> {
+): Promise<{ user: User | null; business: BusinessRow | null; role: ProfileRole }> {
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       get(name: string) {
@@ -51,23 +53,23 @@ export async function getCurrentUserAndBusiness(
 
   if (userError) {
     console.error("[auth] getUser error:", userError.message);
-    return { user: null, business: null };
+    return { user: null, business: null, role: "owner" };
   }
 
   if (!user) {
-    return { user: null, business: null };
+    return { user: null, business: null, role: "owner" };
   }
 
   // Use the same session-aware client so RLS can allow profile/business access
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, business_id")
+    .select("id, business_id, role")
     .eq("id", user.id)
     .maybeSingle();
 
   if (profileError) {
     console.error("[auth] profile lookup error:", profileError.message);
-    return { user, business: null };
+    return { user, business: null, role: "owner" };
   }
 
   let businessId: string | null = profile?.business_id ?? null;
@@ -96,7 +98,7 @@ export async function getCurrentUserAndBusiness(
 
     if (insertBizError || !newBusiness) {
       console.error("[auth] business create error:", insertBizError?.message);
-      return { user, business: null };
+      return { user, business: null, role: "owner" };
     }
 
     businessId = newBusiness.id;
@@ -110,7 +112,7 @@ export async function getCurrentUserAndBusiness(
         );
       if (profileInsertError) {
         console.error("[auth] profile upsert error:", profileInsertError.message);
-        return { user, business: null };
+        return { user, business: null, role: "owner" };
       }
     } else {
       const { error: profileLinkError } = await supabase.rpc("link_profile_to_business", {
@@ -119,7 +121,7 @@ export async function getCurrentUserAndBusiness(
       });
       if (profileLinkError) {
         console.error("[auth] link_profile_to_business error:", profileLinkError.message);
-        return { user, business: null };
+        return { user, business: null, role: "owner" };
       }
     }
   }
@@ -132,8 +134,12 @@ export async function getCurrentUserAndBusiness(
 
   if (businessError || !business) {
     console.error("[auth] business load error:", businessError?.message);
-    return { user, business: null };
+    return { user, business: null, role: (profile?.role as ProfileRole) ?? "owner" };
   }
 
-  return { user, business: business as BusinessRow };
+  return {
+    user,
+    business: business as BusinessRow,
+    role: (profile?.role as ProfileRole) ?? "owner",
+  };
 }
