@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+
+const AddCardForm = dynamic(() => import('@/components/billing/AddCardForm'), { ssr: false });
 
 const INDUSTRY_OPTIONS = [
   '',
@@ -40,6 +43,22 @@ type SettingsData = {
   auto_reply_template: string;
   meta_page_id: string;
   twilio_phone_number?: string;
+  acuity_api_key?: string;
+  square_merchant_id?: string;
+  activation_status?: string;
+  twilio_provisioning_error?: string;
+};
+
+type BookingIntegrationProvider = {
+  id: string;
+  name: string;
+  status: string;
+  trustLevel: string;
+  trustLabel: string;
+  webhookUrl: string | null;
+  setupHint: string | null;
+  credentialsNeeded: string[];
+  canTriggerConfirmedBookingsToday: boolean;
 };
 
 export default function SettingsPage() {
@@ -56,11 +75,14 @@ export default function SettingsPage() {
   const [locationOther, setLocationOther] = useState('');
   const [bookingIntegrations, setBookingIntegrations] = useState<{
     booking_page_url: string;
-    webhooks: { calendly: string; calcom: string; acuity: string; square: string };
+    providers: BookingIntegrationProvider[];
+    feed_secret_required_in_production?: boolean;
     hint?: { square?: string; acuity?: string };
   } | null>(null);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [provisionPhoneLoading, setProvisionPhoneLoading] = useState(false);
+  const [provisionPhoneError, setProvisionPhoneError] = useState<string | null>(null);
 
   const previewText = (() => {
     const businessName =
@@ -114,6 +136,10 @@ export default function SettingsPage() {
         auto_reply_template: settings.auto_reply_template ?? '',
         meta_page_id: settings.meta_page_id ?? '',
         twilio_phone_number: settings.twilio_phone_number ?? '',
+        acuity_api_key: settings.acuity_api_key ?? '',
+        square_merchant_id: settings.square_merchant_id ?? '',
+        activation_status: settings.activation_status ?? 'payment_required',
+        twilio_provisioning_error: settings.twilio_provisioning_error ?? '',
       });
       setLocationOther(isLocInList ? '' : loc);
     } catch (e) {
@@ -134,7 +160,7 @@ export default function SettingsPage() {
     fetch('/api/booking-integrations')
       .then((res) => res.json())
       .then((json) => {
-        if (!cancelled && json?.booking_page_url) setBookingIntegrations(json);
+        if (!cancelled && (json?.booking_page_url || json?.providers)) setBookingIntegrations(json);
       })
       .catch(() => {})
       .finally(() => { if (!cancelled) setIntegrationsLoading(false); });
@@ -183,6 +209,8 @@ export default function SettingsPage() {
           location: locationValue,
           auto_reply_template: form.auto_reply_template ?? '',
           meta_page_id: form.meta_page_id ?? '',
+          acuity_api_key: form.acuity_api_key ?? '',
+          square_merchant_id: form.square_merchant_id ?? '',
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -203,6 +231,8 @@ export default function SettingsPage() {
           auto_reply_template: String(form.auto_reply_template ?? ''),
           meta_page_id: String(form.meta_page_id ?? ''),
           twilio_phone_number: String(form.twilio_phone_number ?? ''),
+          acuity_api_key: String(form.acuity_api_key ?? ''),
+          square_merchant_id: String(form.square_merchant_id ?? ''),
         });
       }
       setTimeout(() => setSuccess(false), 3000);
@@ -353,22 +383,6 @@ export default function SettingsPage() {
 
               <div>
                 <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                  Twilio phone number
-                </label>
-                <input
-                  type="tel"
-                  value={form.twilio_phone_number ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, twilio_phone_number: e.target.value }))}
-                  className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] transition-colors focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="+441234567890"
-                />
-                <p className="mt-1 text-[11px] text-[#94A3B8]">
-                  Used to route Twilio missed call and SMS webhooks to this business. Must match the &quot;To&quot; number configured in Twilio.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
                   Average booking value (£)
                 </label>
                 <input
@@ -418,6 +432,36 @@ export default function SettingsPage() {
                 </p>
               </div>
 
+              <div className="border-t border-[#E5E7EB] pt-4 mt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Booking integration credentials</h3>
+                <p className="mt-1 text-[11px] text-[#94A3B8]">Optional. Used for webhook verification or mapping.</p>
+                <div className="mt-3 space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-[#475569]">Acuity API key</label>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={form.acuity_api_key ?? ''}
+                      onChange={(e) => setForm((f) => ({ ...f, acuity_api_key: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#0F172A] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                      placeholder="Acuity API key for signature verification"
+                    />
+                    <p className="mt-1 text-[11px] text-[#94A3B8]">For Acuity webhook signature verification (x-acuity-signature).</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-[#475569]">Square merchant ID</label>
+                    <input
+                      type="text"
+                      value={form.square_merchant_id ?? ''}
+                      onChange={(e) => setForm((f) => ({ ...f, square_merchant_id: e.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm text-[#0F172A] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                      placeholder="Square merchant ID"
+                    />
+                    <p className="mt-1 text-[11px] text-[#94A3B8]">So we can map Square booking.created webhooks to this business.</p>
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-2">
                 <button
                   type="button"
@@ -431,6 +475,73 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+
+        {!noBusiness && data?.id && (
+          <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
+            <h2 className="text-sm font-semibold text-[#0F172A]">Billing &amp; activation</h2>
+            <p className="mt-1 text-xs text-[#64748B]">
+              Add a card to activate AutoRevenueOS. You&apos;ll only be charged when a booking is confirmed (£3 per confirmed booking). No upfront charge.
+            </p>
+            {(form.activation_status ?? data?.activation_status ?? 'payment_required') === 'active' ? (
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">
+                  Card on file • AutoRevenueOS is active
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-medium">Add your card to activate AutoRevenueOS</p>
+                  <p className="mt-1 text-amber-800">Phone recovery and confirmed booking billing are available only after a payment method is on file.</p>
+                </div>
+                {billingSetupError && (
+                  <p className="mt-2 text-sm text-red-600" role="alert">{billingSetupError}</p>
+                )}
+                {!billingSetupSecret ? (
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setBillingSetupError(null);
+                        setBillingSetupLoading(true);
+                        try {
+                          const res = await fetch('/api/billing/setup-intent', { method: 'POST' });
+                          const json = await res.json().catch(() => ({}));
+                          if (!res.ok) {
+                            setBillingSetupError(json?.error ?? 'Failed to start setup');
+                            return;
+                          }
+                          setBillingSetupSecret(json.clientSecret);
+                        } catch {
+                          setBillingSetupError('Something went wrong. Please try again.');
+                        } finally {
+                          setBillingSetupLoading(false);
+                        }
+                      }}
+                      disabled={billingSetupLoading}
+                      className="rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
+                    >
+                      {billingSetupLoading ? 'Loading…' : 'Add your card'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+                    <AddCardForm
+                      clientSecret={billingSetupSecret}
+                      onSuccess={() => {
+                        setBillingSetupSecret(null);
+                        loadSettings();
+                        setForm((f) => ({ ...f, activation_status: 'active' }));
+                        setData((d) => (d ? { ...d, activation_status: 'active' } : d));
+                      }}
+                      onCancel={() => setBillingSetupSecret(null)}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
         <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
           <h2 className="text-sm font-semibold text-[#0F172A]">Auto-reply</h2>
@@ -475,68 +586,218 @@ export default function SettingsPage() {
         </section>
 
         <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
-          <h2 className="text-sm font-semibold text-[#0F172A]">Booking integrations</h2>
+          <h2 className="text-sm font-semibold text-[#0F172A]">Phone Recovery</h2>
           <p className="mt-1 text-xs text-[#64748B]">
-            Use these URLs in your booking system to send confirmed bookings to AutoRevenueOS. Only confirmed bookings (not link clicks) trigger billing.
+            A dedicated number for missed-call detection and recovery SMS. Forward your business calls to it so we can capture missed calls and send booking links. Setup success does not assign a number — enable here after adding a card.
           </p>
-          {integrationsLoading ? (
-            <p className="mt-4 text-sm text-[#94A3B8]">Loading URLs…</p>
-          ) : bookingIntegrations ? (
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">AutoRevenueOS booking page</label>
-                <p className="mt-1 text-[11px] text-[#94A3B8]">Share this link for customers to confirm; we record one confirmed booking per confirmation.</p>
-                <div className="mt-1.5 flex gap-2">
-                  <input
-                    readOnly
-                    value={bookingIntegrations.booking_page_url}
-                    className="flex-1 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-sm text-[#0F172A] font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(bookingIntegrations.booking_page_url);
-                      setCopiedUrl('booking_page');
-                      setTimeout(() => setCopiedUrl(null), 2000);
-                    }}
-                    className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]"
-                  >
-                    {copiedUrl === 'booking_page' ? 'Copied' : 'Copy'}
-                  </button>
+          {noBusiness || !data?.id ? (
+            <>
+              <p className="mt-3 text-sm font-medium text-[#64748B]">Status: Not set up</p>
+              <p className="mt-2 text-sm text-[#94A3B8]">Create or select your business above to enable Phone Recovery.</p>
+            </>
+          ) : (() => {
+            const hasNumber = Boolean((form.twilio_phone_number ?? '').trim());
+            const persistedError = (form.twilio_provisioning_error ?? data?.twilio_provisioning_error ?? '').trim();
+            const isBillingActive = (form.activation_status ?? data?.activation_status) === 'active';
+            const status: 'active' | 'pending' | 'failed' | 'inactive' =
+              hasNumber ? 'active' : provisionPhoneLoading ? 'pending' : persistedError ? 'failed' : 'inactive';
+            return (
+              <>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-[#64748B]">Status:</span>
+                  {status === 'active' && (
+                    <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">Active</span>
+                  )}
+                  {status === 'pending' && (
+                    <span className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-sm font-medium text-sky-800">Provisioning…</span>
+                  )}
+                  {status === 'failed' && (
+                    <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-800">Provisioning failed</span>
+                  )}
+                  {status === 'inactive' && (
+                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">Not set up</span>
+                  )}
                 </div>
-              </div>
-              {(['calendly', 'calcom', 'acuity', 'square'] as const).map((key) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">{key} webhook URL</label>
-                  {key === 'square' && bookingIntegrations.hint?.square && (
-                    <p className="mt-0.5 text-[11px] text-amber-700">{bookingIntegrations.hint.square}</p>
-                  )}
-                  {key === 'acuity' && bookingIntegrations.hint?.acuity && (
-                    <p className="mt-0.5 text-[11px] text-amber-700">{bookingIntegrations.hint.acuity}</p>
-                  )}
-                  <div className="mt-1.5 flex gap-2">
-                    <input
-                      readOnly
-                      value={bookingIntegrations.webhooks[key]}
-                      className="flex-1 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-sm text-[#0F172A] font-mono"
-                    />
+                {status === 'active' && (
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">Recovery number</label>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5 text-sm font-medium text-[#0F172A] font-mono">
+                          {(form.twilio_phone_number ?? '').trim()}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const num = (form.twilio_phone_number ?? '').trim();
+                            if (num) {
+                              navigator.clipboard.writeText(num);
+                              setCopiedUrl('recovery_number');
+                              setTimeout(() => setCopiedUrl(null), 2000);
+                            }
+                          }}
+                          className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2.5 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                        >
+                          {copiedUrl === 'recovery_number' ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-[#475569]">
+                      Forward missed calls from your business phone to this number.
+                    </p>
+                  </div>
+                )}
+                {status === 'failed' && (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                      <p className="font-medium">Provisioning failed</p>
+                      <p className="mt-1">{persistedError || provisionPhoneError || 'No number was assigned. Please try again.'}</p>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(bookingIntegrations.webhooks[key]);
-                        setCopiedUrl(key);
-                        setTimeout(() => setCopiedUrl(null), 2000);
+                      onClick={async () => {
+                        setProvisionPhoneError(null);
+                        setProvisionPhoneLoading(true);
+                        try {
+                          const res = await fetch('/api/settings/provision-phone', { method: 'POST' });
+                          const json = await res.json().catch(() => ({}));
+                          if (!res.ok) {
+                            setProvisionPhoneError(json?.error ?? 'Failed to provision number');
+                            await loadSettings();
+                            return;
+                          }
+                          await loadSettings();
+                          setForm((f) => ({ ...f, twilio_phone_number: json.phoneNumber ?? '', twilio_provisioning_error: '' }));
+                          setData((d) => (d ? { ...d, twilio_phone_number: json.phoneNumber ?? '', twilio_provisioning_error: '' } : d));
+                        } catch {
+                          setProvisionPhoneError('Something went wrong. Please try again.');
+                        } finally {
+                          setProvisionPhoneLoading(false);
+                        }
                       }}
-                      className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                      disabled={provisionPhoneLoading}
+                      className="rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
                     >
-                      {copiedUrl === key ? 'Copied' : 'Copy'}
+                      {provisionPhoneLoading ? 'Retrying…' : 'Retry provisioning'}
                     </button>
                   </div>
+                )}
+                {status === 'inactive' && (
+                  isBillingActive ? (
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setProvisionPhoneError(null);
+                          setProvisionPhoneLoading(true);
+                          try {
+                            const res = await fetch('/api/settings/provision-phone', { method: 'POST' });
+                            const json = await res.json().catch(() => ({}));
+                            if (!res.ok) {
+                              setProvisionPhoneError(json?.error ?? 'Failed to provision number');
+                              await loadSettings();
+                              return;
+                            }
+                            await loadSettings();
+                            setForm((f) => ({ ...f, twilio_phone_number: json.phoneNumber ?? '', twilio_provisioning_error: '' }));
+                          } catch {
+                            setProvisionPhoneError('Something went wrong. Please try again.');
+                          } finally {
+                            setProvisionPhoneLoading(false);
+                          }
+                        }}
+                        disabled={provisionPhoneLoading}
+                        className="rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
+                      >
+                        {provisionPhoneLoading ? 'Provisioning…' : 'Enable Phone Recovery'}
+                      </button>
+                      <p className="mt-2 text-[11px] text-[#94A3B8]">
+                        A Twilio number will be purchased and voice/SMS webhooks configured. Success only when a number is shown above.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      <p className="font-medium">Add your card to activate first</p>
+                      <p className="mt-1 text-amber-800">Phone Recovery is available after you add a payment method in Billing &amp; activation above.</p>
+                    </div>
+                  )
+                )}
+                {status === 'pending' && (
+                  <p className="mt-4 text-sm text-[#64748B]">Request in progress. Do not leave this page until a number appears or an error is shown.</p>
+                )}
+                {provisionPhoneError && status !== 'failed' && (
+                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {provisionPhoneError}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </section>
+
+        <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
+          <h2 className="text-sm font-semibold text-[#0F172A]">Booking integrations</h2>
+          <p className="mt-1 text-xs text-[#64748B]">
+            Use these URLs in your booking system to send confirmed bookings to AutoRevenueOS. Only confirmed bookings (not link clicks) trigger billing. Trust: <strong>Verified</strong> = native/signed; <strong>Bridge</strong> = feed/automation (set INBOUND_FEED_SECRET in production).
+          </p>
+          {bookingIntegrations?.feed_secret_required_in_production && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              In production, generic feed and Google Sheets endpoints require <code className="rounded bg-amber-100 px-1">INBOUND_FEED_SECRET</code> to be set; otherwise they return 503. Set the secret in your environment and send <code className="rounded bg-amber-100 px-1">Authorization: Bearer &lt;secret&gt;</code>.
+            </div>
+          )}
+          {integrationsLoading ? (
+            <p className="mt-4 text-sm text-[#94A3B8]">Loading URLs…</p>
+          ) : bookingIntegrations?.providers?.length ? (
+            <div className="mt-4 space-y-4">
+              {bookingIntegrations.providers.map((p) => (
+                <div key={p.id} className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC]/50 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-[#0F172A]">{p.name}</span>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        p.trustLevel === 'verified' ? 'bg-emerald-100 text-emerald-800' :
+                        p.trustLevel === 'bridge' ? 'bg-sky-100 text-sky-800' :
+                        'bg-slate-100 text-slate-600'
+                      }`}
+                      title={p.trustLabel}
+                    >
+                      {p.trustLabel}
+                    </span>
+                    {p.status === 'partial' && (
+                      <span className="text-[11px] text-[#64748B]">Partial</span>
+                    )}
+                  </div>
+                  {p.setupHint && (
+                    <p className="mt-1 text-[11px] text-[#64748B]">{p.setupHint}</p>
+                  )}
+                  {p.webhookUrl && (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        readOnly
+                        value={p.webhookUrl}
+                        className="flex-1 rounded border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] text-[#0F172A] font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(p.webhookUrl!);
+                          setCopiedUrl(p.id);
+                          setTimeout(() => setCopiedUrl(null), 2000);
+                        }}
+                        className="rounded border border-[#E5E7EB] bg-white px-3 py-1.5 text-xs font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                      >
+                        {copiedUrl === p.id ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
+                  )}
+                  {p.id === 'feed' && bookingIntegrations.feed_secret_required_in_production && (
+                    <p className="mt-1.5 text-[11px] text-amber-700">Requires Bearer token in production.</p>
+                  )}
                 </div>
               ))}
             </div>
           ) : !noBusiness && data?.id ? (
-            <p className="mt-4 text-sm text-[#94A3B8]">Could not load URLs. Check you are signed in.</p>
+            <p className="mt-4 text-sm text-[#94A3B8]">Could not load integrations. Check you are signed in.</p>
           ) : null}
         </section>
       </div>

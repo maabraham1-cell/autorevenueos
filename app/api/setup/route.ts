@@ -26,10 +26,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (business) {
-      return NextResponse.json({ success: true, businessId: business.id });
+      return NextResponse.json({
+        success: true,
+        businessId: business.id,
+        phone_recovery_available: Boolean((business as { twilio_phone_number?: string }).twilio_phone_number),
+      });
     }
 
-    const body = (await request.json().catch(() => ({}))) as { name?: string };
+    const body = (await request.json().catch(() => ({}))) as { name?: string; location?: string };
     const name =
       typeof body.name === "string" && body.name.trim().length > 0
         ? body.name.trim().slice(0, 200)
@@ -51,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     const { data: newBusiness, error: insertBizError } = await adminClient
       .from("businesses")
-      .insert({ name })
+      .insert({ name, activation_status: "payment_required" })
       .select("id")
       .single();
 
@@ -87,9 +91,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Twilio number is provisioned only after the business is active (card on file); see Settings → Phone Recovery.
+
     return NextResponse.json({
       success: true,
       businessId: newBusiness.id,
+      phone_recovery_available: false,
     });
   } catch (e) {
     console.error("[setup] unexpected error:", e);

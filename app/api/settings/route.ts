@@ -44,6 +44,10 @@ export async function GET(request: NextRequest) {
       currency_code: ((business as any).currency_code as string) ?? "GBP",
       locale: ((business as any).locale as string) ?? "en-GB",
       twilio_phone_number: ((business as any).twilio_phone_number as string) ?? "",
+      acuity_api_key: ((business as any).acuity_api_key as string) ?? "",
+      square_merchant_id: ((business as any).square_merchant_id as string) ?? "",
+      activation_status: ((business as any).activation_status as string) ?? "payment_required",
+      twilio_provisioning_error: ((business as any).twilio_provisioning_error as string) ?? "",
     });
   } catch (e) {
     console.error("[settings] unexpected error:", e);
@@ -148,6 +152,16 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.twilio_phone_number === "string") {
       const normalized = normalizePhone(body.twilio_phone_number);
       updates.twilio_phone_number = normalized || null;
+    }
+
+    if (typeof body.acuity_api_key === "string") {
+      const val = body.acuity_api_key.trim().slice(0, 500);
+      updates.acuity_api_key = val.length > 0 ? val : null;
+    }
+
+    if (typeof body.square_merchant_id === "string") {
+      const val = body.square_merchant_id.trim().slice(0, 200);
+      updates.square_merchant_id = val.length > 0 ? val : null;
     }
 
     if (Object.keys(updates).length === 0) {
