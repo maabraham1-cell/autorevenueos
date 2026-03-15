@@ -14,6 +14,18 @@ export type ConfirmationSource =
   | "cal.com"
   | "acuity"
   | "square"
+  | "fresha"
+  | "timely"
+  | "treatwell"
+  | "cliniko"
+  | "setmore"
+  | "jane"
+  | "booksy"
+  | "google_sheets"
+  | "zapier"
+  | "make"
+  | "pipedream"
+  | "manual_feed"
   | (string & {});
 
 export type RecordConfirmedBookingInput = {
@@ -39,7 +51,7 @@ type BillingEventType =
   | "duplicate_ignored";
 
 async function logBillingEvent(
-  db: { from: (table: string) => { insert: (row: object) => Promise<{ error: unknown }> } },
+  db: ReturnType<typeof getSupabaseAdmin> extends null ? typeof supabase : NonNullable<ReturnType<typeof getSupabaseAdmin>>,
   businessId: string,
   confirmedBookingId: string | null,
   eventType: BillingEventType,
@@ -148,14 +160,16 @@ export async function recordConfirmedBooking(
 
   const { data: business } = await db
     .from("businesses")
-    .select("stripe_customer_id")
+    .select("stripe_customer_id, activation_status")
     .eq("id", input.business_id)
     .single();
 
   const stripeCustomerId =
     (business as { stripe_customer_id?: string } | null)?.stripe_customer_id;
+  const activationStatus = (business as { activation_status?: string } | null)?.activation_status;
 
-  if (!stripeCustomerId) {
+  const isActive = activationStatus === "active";
+  if (!stripeCustomerId || !isActive) {
     await db
       .from("confirmed_bookings")
       .update({ billing_status: "skipped" })
@@ -165,7 +179,9 @@ export async function recordConfirmedBooking(
       input.business_id,
       row.id,
       "meter_skipped_no_customer",
-      "Business has no stripe_customer_id; meter not sent.",
+      !stripeCustomerId
+        ? "Business has no stripe_customer_id; meter not sent."
+        : "Business not active (no payment method on file); meter not sent.",
       {}
     );
     return { ok: true, confirmed_booking_id: row.id };

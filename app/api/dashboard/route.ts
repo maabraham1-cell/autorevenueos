@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
+import { getProviderBySource } from "@/lib/booking-providers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,14 +78,21 @@ export async function GET(request: NextRequest) {
     }
 
     const recent_confirmed_bookings =
-      recentConfirmedRaw?.map((r) => ({
-        id: r.id as string,
-        confirmed_at: r.confirmed_at as string,
-        confirmation_source: r.confirmation_source as string,
-        billing_status: (r as { billing_status?: string }).billing_status ?? "pending",
-        billing_error: (r as { billing_error?: string }).billing_error ?? null,
-        external_booking_id: (r as { external_booking_id?: string }).external_booking_id ?? null,
-      })) ?? [];
+      recentConfirmedRaw?.map((r) => {
+        const source = r.confirmation_source as string;
+        const provider = getProviderBySource(source);
+        return {
+          id: r.id as string,
+          confirmed_at: r.confirmed_at as string,
+          confirmation_source: source,
+          confirmation_source_display_name: provider?.name ?? source,
+          trust_level: provider?.trustLevel ?? null,
+          trust_label: provider?.trustLabel ?? null,
+          billing_status: (r as { billing_status?: string }).billing_status ?? "pending",
+          billing_error: (r as { billing_error?: string }).billing_error ?? null,
+          external_booking_id: (r as { external_booking_id?: string }).external_booking_id ?? null,
+        };
+      }) ?? [];
 
     const { data: recentBillingEventsRaw, error: billingEventsError } = await supabase
       .from("billing_events")
@@ -262,6 +270,7 @@ export async function GET(request: NextRequest) {
       average_booking_value: averageBookingValue,
       currency_code: ((business as any).currency_code as string) ?? "GBP",
       locale: ((business as any).locale as string) ?? "en-GB",
+      activation_status: ((business as any).activation_status as string) ?? "payment_required",
       recent_recoveries,
       recent_confirmed_bookings,
       recent_billing_events,

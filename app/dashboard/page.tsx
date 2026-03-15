@@ -22,6 +22,7 @@ type DashboardResponse = {
   average_booking_value?: number;
   currency_code?: string;
   locale?: string;
+  activation_status?: string;
   recent_recoveries: {
     id: string;
     created_at: string;
@@ -32,6 +33,9 @@ type DashboardResponse = {
     id: string;
     confirmed_at: string;
     confirmation_source: string;
+    confirmation_source_display_name?: string;
+    trust_level: string | null;
+    trust_label: string | null;
     billing_status: string;
     billing_error: string | null;
     external_booking_id: string | null;
@@ -213,6 +217,15 @@ export default function DashboardPage() {
             </a>
           </div>
         )}
+        {!error && data && (data.activation_status ?? 'payment_required') !== 'active' && (
+          <div className="animate-fade-in-up mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900 shadow-sm">
+            <p className="font-medium">Add your card to activate AutoRevenueOS</p>
+            <p className="mt-1 text-amber-800">You&apos;ll only be charged when a booking is confirmed (£3 per confirmed booking). No upfront charge. Phone recovery and billing are active after you add a payment method.</p>
+            <a href="/settings" className="mt-3 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
+              Add card in Settings
+            </a>
+          </div>
+        )}
         {error && error !== 'no_business' && (
           <div className="animate-fade-in-up mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
             {error}
@@ -287,7 +300,7 @@ export default function DashboardPage() {
           )}
           <SectionHeader
             title="Confirmed bookings"
-            description="Only these rows can trigger billing. Billing status: sent = meter event reported to Stripe (billed_at set); failed = meter call failed (use Retry); skipped = no Stripe customer. billed_at means meter reported only — not invoice paid."
+            description="Only these rows can trigger billing. Source = integration that reported the booking; Trust = verified (native/signed), bridge (feed/automation), or unverified. Billing status: sent = meter event reported to Stripe (billed_at set); failed = meter call failed (use Retry); skipped = no Stripe customer."
             rightContent={
               <p className="text-xs text-[#94A3B8]">
                 Last {recentConfirmed.length} · {confirmedBookings} total
@@ -300,6 +313,7 @@ export default function DashboardPage() {
                 <tr className="border-b border-[#E5E7EB] bg-[#F8FAFC] text-xs font-medium uppercase tracking-wide text-[#64748B]">
                   <th className="py-2.5 pr-4 pl-3">Confirmed at</th>
                   <th className="py-2.5 pr-4">Source</th>
+                  <th className="py-2.5 pr-4">Trust</th>
                   <th className="py-2.5 pr-4">Billing status</th>
                   <th className="py-2.5 pr-4">External ID</th>
                   <th className="py-2.5 pr-4 pl-3 w-[100px]">Actions</th>
@@ -310,7 +324,19 @@ export default function DashboardPage() {
                   recentConfirmed.map((r) => (
                     <tr key={r.id} className="border-b border-[#E5E7EB] last:border-0 odd:bg-white even:bg-[#F9FAFB]/60">
                       <td className="py-2.5 pr-4 pl-3 text-[#0F172A]">{formatDate(r.confirmed_at)}</td>
-                      <td className="py-2.5 pr-4 text-[#475569]">{r.confirmation_source}</td>
+                      <td className="py-2.5 pr-4 text-[#475569]">{r.confirmation_source_display_name ?? r.confirmation_source}</td>
+                      <td className="py-2.5 pr-4">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            r.trust_level === 'verified' ? 'bg-emerald-100 text-emerald-800' :
+                            r.trust_level === 'bridge' ? 'bg-sky-100 text-sky-800' :
+                            'bg-slate-100 text-slate-600'
+                          }`}
+                          title={r.trust_label ?? undefined}
+                        >
+                          {r.trust_label ?? r.trust_level ?? '—'}
+                        </span>
+                      </td>
                       <td className="py-2.5 pr-4">
                         <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                           r.billing_status === 'sent' ? 'bg-emerald-100 text-emerald-800' :
@@ -345,7 +371,7 @@ export default function DashboardPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-sm text-[#94A3B8]">
+                    <td colSpan={6} className="py-6 text-center text-sm text-[#94A3B8]">
                       {loading ? 'Loading…' : 'No confirmed bookings yet.'}
                     </td>
                   </tr>

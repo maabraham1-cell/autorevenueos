@@ -4,17 +4,16 @@ import { recordConfirmedBooking } from "@/lib/confirm-booking";
 import { findContactAndRecoveryByEmail } from "@/lib/webhook-helpers";
 
 /**
- * Fresha webhook / bridge for confirmed bookings.
+ * Timely webhook / bridge for confirmed bookings.
  *
- * Fresha (beauty/salons) typically requires partner/API access for native webhooks.
- * This endpoint accepts:
- * 1) A bridge payload from Make/Zapier/Pipedream (when you have a trigger from Fresha or manual entry).
- * 2) Future: Fresha partner webhook (verify signature when businesses.fresha_webhook_secret is set).
+ * Timely (salons/spa) may offer API or webhooks with credentials. Until then, use this as a bridge:
+ * Make/Zapier/Pipedream can POST when a booking is created in Timely (e.g. poll API or use their integration).
  *
- * POST /api/webhooks/fresha?business_id=<BUSINESS_UUID>
+ * POST /api/webhooks/timely?business_id=<BUSINESS_UUID>
  * Body (JSON): business_id?, external_booking_id, email?, confirmed_at?
  *
- * When Fresha partner webhook is available: same URL, we will verify and map venue to business_id.
+ * Polling strategy (when you have Timely API): poll appointments endpoint, filter new/confirmed,
+ * POST each to this URL with external_booking_id = timely:<appointment_id>.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -42,8 +41,8 @@ export async function POST(request: NextRequest) {
     const externalBookingId =
       typeof b.external_booking_id === "string" && b.external_booking_id.trim()
         ? b.external_booking_id.trim()
-        : typeof b.booking_id === "string" && b.booking_id.trim()
-          ? `fresha:${b.booking_id.trim()}`
+        : typeof b.appointment_id === "string" && b.appointment_id.trim()
+          ? `timely:${b.appointment_id.trim()}`
           : null;
 
     const email =
@@ -84,7 +83,7 @@ export async function POST(request: NextRequest) {
       contact_id: contactId,
       recovery_id: recoveryId,
       external_booking_id: externalBookingId,
-      confirmation_source: "fresha",
+      confirmation_source: "timely",
       confirmed_at: confirmedAt,
     });
 
@@ -103,7 +102,7 @@ export async function POST(request: NextRequest) {
       confirmed_booking_id: result.confirmed_booking_id,
     });
   } catch (e) {
-    console.error("[webhooks/fresha] unexpected error:", e);
+    console.error("[webhooks/timely] unexpected error:", e);
     return NextResponse.json(
       { error: "Webhook processing failed" },
       { status: 500 }

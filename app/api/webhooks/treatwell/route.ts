@@ -4,17 +4,13 @@ import { recordConfirmedBooking } from "@/lib/confirm-booking";
 import { findContactAndRecoveryByEmail } from "@/lib/webhook-helpers";
 
 /**
- * Fresha webhook / bridge for confirmed bookings.
+ * Treatwell webhook / bridge for confirmed bookings.
  *
- * Fresha (beauty/salons) typically requires partner/API access for native webhooks.
- * This endpoint accepts:
- * 1) A bridge payload from Make/Zapier/Pipedream (when you have a trigger from Fresha or manual entry).
- * 2) Future: Fresha partner webhook (verify signature when businesses.fresha_webhook_secret is set).
+ * Treatwell (beauty/salons) typically requires partner access for native webhooks.
+ * Use this endpoint as a bridge: Make/Zapier or manual feed can POST when a booking is confirmed.
  *
- * POST /api/webhooks/fresha?business_id=<BUSINESS_UUID>
+ * POST /api/webhooks/treatwell?business_id=<BUSINESS_UUID>
  * Body (JSON): business_id?, external_booking_id, email?, confirmed_at?
- *
- * When Fresha partner webhook is available: same URL, we will verify and map venue to business_id.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -43,7 +39,7 @@ export async function POST(request: NextRequest) {
       typeof b.external_booking_id === "string" && b.external_booking_id.trim()
         ? b.external_booking_id.trim()
         : typeof b.booking_id === "string" && b.booking_id.trim()
-          ? `fresha:${b.booking_id.trim()}`
+          ? `treatwell:${b.booking_id.trim()}`
           : null;
 
     const email =
@@ -84,7 +80,7 @@ export async function POST(request: NextRequest) {
       contact_id: contactId,
       recovery_id: recoveryId,
       external_booking_id: externalBookingId,
-      confirmation_source: "fresha",
+      confirmation_source: "treatwell",
       confirmed_at: confirmedAt,
     });
 
@@ -103,7 +99,7 @@ export async function POST(request: NextRequest) {
       confirmed_booking_id: result.confirmed_booking_id,
     });
   } catch (e) {
-    console.error("[webhooks/fresha] unexpected error:", e);
+    console.error("[webhooks/treatwell] unexpected error:", e);
     return NextResponse.json(
       { error: "Webhook processing failed" },
       { status: 500 }

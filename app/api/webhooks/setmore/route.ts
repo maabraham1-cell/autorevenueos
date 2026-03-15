@@ -1,25 +1,108 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { recordConfirmedBooking } from "@/lib/confirm-booking";
+import { findContactAndRecoveryByEmail } from "@/lib/webhook-helpers";
 
 /**
- * Setmore webhook: scaffold only.
+ * Setmore webhook / bridge for confirmed bookings.
  *
- * Setmore is used by salons and SMBs. Official public webhook documentation was not found;
- * some sources mention appointment.created-style events. If Setmore adds or exposes webhooks:
+ * Setmore does not document public webhooks. Use this endpoint from Make/Zapier when you have
+ * a trigger for "Appointment created", or from a polling job if Setmore exposes an API.
  *
- * When implementing:
- * - Verify request (signature or shared secret if provided).
- * - URL: .../api/webhooks/setmore?business_id=<UUID> or map Setmore account to business.
- * - Parse payload for appointment id and customer email/phone.
- * - Call findContactAndRecoveryByEmail (or by phone) then recordConfirmedBooking(..., confirmation_source: "setmore").
- *
- * Required for full integration: Official Setmore webhook docs or API; business_id mapping.
+ * POST /api/webhooks/setmore?business_id=<BUSINESS_UUID>
+ * Body (JSON): business_id?, external_booking_id, email?, confirmed_at?
  */
 export async function POST(request: NextRequest) {
-  return NextResponse.json(
-    {
-      error: "Setmore integration not yet implemented",
-      hint: "Awaiting official webhook/API for appointment created. See docs/BOOKING_INTEGRATIONS.md",
-    },
-    { status: 501 }
-  );
+  try {
+    const businessIdQuery = request.nextUrl.searchParams.get("business_id");
+    const raw = await request.json().catch(() => null);
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return NextResponse.json(
+        { error: "Invalid JSON body" },
+        { status: 400 }
+      );
+    }
+
+    const b = raw as Record<string, unknown>;
+    let businessId =
+      typeof b.business_id === "string"
+        ? b.business_id.trim()
+        : (businessIdQuery ?? "").trim();
+    if (!businessId) {
+      return NextResponse.json(
+        { error: "Missing business_id (query or body)" },
+        { status: 400 }
+      );
+    }
+
+    const externalBookingId =
+      typeof b.external_booking_id === "string" && b.external_booking_id.trim()
+        ? b.external_booking_id.trim()
+        : typeof b.appointment_id === "string" && b.appointment_id.trim()
+          ? `setmore:${b.appointment_id.trim()}`
+          : null;
+
+    const email =
+      typeof b.email === "string" ? b.email.trim().toLowerCase() : null;
+    let confirmedAt: Date | undefined;
+    if (typeof b.confirmed_at === "string" && b.confirmed_at.trim()) {
+      const d = new Date(b.confirmed_at.trim());
+      if (!isNaN(d.getTime())) confirmedAt = d;
+    }
+
+    const db = getSupabaseAdmin();
+    if (!db) {
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
+    const { data: business } = await db
+      .from("businesses")
+      .select("id")
+      .eq("id", businessId)
+      .single();
+
+    if (!business) {
+      return NextResponse.json(
+        { error: "Business not found" },
+        { status: 404 }
+      );
+    }
+
+    const { contact_id: contactId, recovery_id: recoveryId } = email
+      ? await findContactAndRecoveryByEmail(db, businessId, email)
+      : { contact_id: null as string | null, recovery_id: null as string | null };
+
+    const result = await recordConfirmedBooking({
+      business_id: businessId,
+      contact_id: contactId,
+      recovery_id: recoveryId,
+      external_booking_id: externalBookingId,
+      confirmation_source: "setmore",
+      confirmed_at: confirmedAt,
+    });
+
+    if (!result.ok) {
+      if (result.error.includes("Duplicate")) {
+        return NextResponse.json({ success: true });
+      }
+      return NextResponse.json(
+        { error: result.error },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      confirmed_booking_id: result.confirmed_booking_id,
+    });
+  } catch (e) {
+    console.error("[webhooks/setmore] unexpected error:", e);
+    return NextResponse.json(
+      { error: "Webhook processing failed" },
+      { status: 500 }
+    );
+  }
 }
