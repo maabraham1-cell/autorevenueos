@@ -42,13 +42,13 @@ Before deploying AutoRevenueOS, make sure the following environment variables ar
   - Must never be embedded in client-side code or sent to the browser.
 
 - **`TWILIO_ACCOUNT_SID`** (server only)  
-  - Twilio account SID used to send SMS via the Twilio API.
+  - Twilio account SID. Used for auto-provisioning a recovery number per business and for sending recovery SMS.
 
 - **`TWILIO_AUTH_TOKEN`** (server only)  
-  - Twilio auth token used both for sending messages and verifying `X-Twilio-Signature` on incoming webhooks.
+  - Twilio auth token. Used for provisioning, sending messages, and verifying `X-Twilio-Signature` on incoming webhooks (`/api/missed-call`, `/api/sms-webhook`).
 
-- **`TWILIO_PHONE_NUMBER`** (server only)  
-  - Default Twilio phone number used when sending outbound SMS.
+- **`TWILIO_PHONE_NUMBER`** (server only, optional)  
+  - Legacy/default Twilio number if you are not using per-business auto-provisioning. When each business has its own provisioned number (see [Twilio phone provisioning](docs/TWILIO_PHONE_PROVISIONING.md)), outbound SMS uses the business’s number.
 
 - **`META_PAGE_ACCESS_TOKEN`** (server only)  
   - Access token used to send replies via the Meta Graph API.
@@ -65,10 +65,19 @@ Before deploying AutoRevenueOS, make sure the following environment variables ar
 - **`WEBSITE_CHAT_NOTIFY_EMAIL`** (server only)  
   - Email address to receive website-chat notifications. Defaults to `hello@autorevenue.com` if not set.
 
+- **`NEXT_PUBLIC_TURNSTILE_SITE_KEY`** (exposed to client)  
+  - Cloudflare Turnstile site key for human verification on the login/signup form. If set, the Turnstile widget is shown; if unset, a simple “Verify you are human” checkbox is used.
+
+- **`TURNSTILE_SECRET_KEY`** (server only)  
+  - Cloudflare Turnstile secret key for server-side token verification. Required when using Turnstile; used by `POST /api/turnstile-verify` to validate tokens with Cloudflare’s Siteverify API.
+
 ### Booking confirmation and billing
 
 - **`STRIPE_SECRET_KEY`** (server only)  
-  - Used to report `confirmed_bookings` meter events when a trusted booking confirmation is recorded. Required for usage-based billing. Create a meter in Stripe with event name `confirmed_bookings`.
+  - Used for creating Stripe customers, SetupIntents (card on file), and reporting `confirmed_bookings` meter events. Required for usage-based billing. Create a meter in Stripe with event name `confirmed_bookings`.
+
+- **`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`** (exposed to client)  
+  - Stripe publishable key for the Add Card form (Stripe Elements) in Settings. Required for card-required activation flow.
 
 - **`BOOKING_CONFIRM_SECRET`** (server only)  
   - Secret for signing the AutoRevenueOS booking page confirm token. If unset, `STRIPE_SECRET_KEY` is used. Must be at least 16 characters.

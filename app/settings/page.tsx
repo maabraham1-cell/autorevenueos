@@ -83,6 +83,9 @@ export default function SettingsPage() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [provisionPhoneLoading, setProvisionPhoneLoading] = useState(false);
   const [provisionPhoneError, setProvisionPhoneError] = useState<string | null>(null);
+  const [billingSetupSecret, setBillingSetupSecret] = useState<string | null>(null);
+  const [billingSetupLoading, setBillingSetupLoading] = useState(false);
+  const [billingSetupError, setBillingSetupError] = useState<string | null>(null);
 
   const previewText = (() => {
     const businessName =
