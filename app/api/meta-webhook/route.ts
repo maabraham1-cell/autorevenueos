@@ -349,8 +349,9 @@ async function processMessagingEvent(
   const replyText = templateToUse
     .replace(/{business_name}/g, businessName)
     .replace(/{booking_link}/g, bookingLinkValue);
+  const pageToken = (business as { meta_page_access_token?: string | null }).meta_page_access_token ?? null;
   try {
-    await sendMetaReply({ recipientId: senderId, text: replyText });
+    await sendMetaReply({ recipientId: senderId, text: replyText, pageAccessToken: pageToken });
     // Log the outbound auto-reply in messages so we can detect future re-engagement.
     const { error: outboundMessageError } = await supabase.from("messages").insert({
       business_id: business.id,

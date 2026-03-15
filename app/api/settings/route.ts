@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
       location: ((business as any).location as string) ?? "",
       auto_reply_template: ((business as any).auto_reply_template as string) ?? "",
       meta_page_id: ((business as any).meta_page_id as string) ?? "",
+      meta_page_name: ((business as any).meta_page_name as string) ?? "",
       cost_per_lead: cpl,
       currency_code: ((business as any).currency_code as string) ?? "GBP",
       locale: ((business as any).locale as string) ?? "en-GB",
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest) {
       square_merchant_id: ((business as any).square_merchant_id as string) ?? "",
       activation_status: ((business as any).activation_status as string) ?? "payment_required",
       twilio_provisioning_error: ((business as any).twilio_provisioning_error as string) ?? "",
+      business_mobile: ((business as any).business_mobile as string) ?? "",
     });
   } catch (e) {
     console.error("[settings] unexpected error:", e);
@@ -152,6 +154,11 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.twilio_phone_number === "string") {
       const normalized = normalizePhone(body.twilio_phone_number);
       updates.twilio_phone_number = normalized || null;
+    }
+
+    if (typeof body.business_mobile === "string") {
+      const normalized = normalizePhone(body.business_mobile);
+      updates.business_mobile = normalized || null;
     }
 
     if (typeof body.acuity_api_key === "string") {

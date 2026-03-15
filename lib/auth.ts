@@ -89,10 +89,22 @@ export async function getCurrentUserAndBusiness(
         ? userMeta.full_name.trim()
         : null) ||
       "New Business";
+    const businessMobile =
+      typeof userMeta.business_mobile === "string" && userMeta.business_mobile.trim().length > 0
+        ? userMeta.business_mobile.trim()
+        : null;
+    const businessType =
+      typeof userMeta.business_type === "string" && userMeta.business_type.trim().length > 0
+        ? userMeta.business_type.trim()
+        : null;
 
     const { data: newBusiness, error: insertBizError } = await adminClient
       .from("businesses")
-      .insert({ name: businessNameFromMeta })
+      .insert({
+        name: businessNameFromMeta,
+        industry: businessType,
+        business_mobile: businessMobile,
+      })
       .select("id")
       .single();
 
@@ -103,11 +115,30 @@ export async function getCurrentUserAndBusiness(
 
     businessId = newBusiness.id;
 
+    const profileTitle =
+      typeof userMeta.title === "string" && userMeta.title.trim().length > 0
+        ? userMeta.title.trim()
+        : null;
+    const profileFirstName =
+      typeof userMeta.first_name === "string" && userMeta.first_name.trim().length > 0
+        ? userMeta.first_name.trim()
+        : null;
+    const profileLastName =
+      typeof userMeta.last_name === "string" && userMeta.last_name.trim().length > 0
+        ? userMeta.last_name.trim()
+        : null;
+
     if (supabaseServiceKey) {
       const { error: profileInsertError } = await adminClient
         .from("profiles")
         .upsert(
-          { id: user.id, business_id: businessId },
+          {
+            id: user.id,
+            business_id: businessId,
+            title: profileTitle,
+            first_name: profileFirstName,
+            last_name: profileLastName,
+          },
           { onConflict: "id" }
         );
       if (profileInsertError) {
@@ -122,6 +153,16 @@ export async function getCurrentUserAndBusiness(
       if (profileLinkError) {
         console.error("[auth] link_profile_to_business error:", profileLinkError.message);
         return { user, business: null, role: "owner" };
+      }
+      if (profileTitle ?? profileFirstName ?? profileLastName) {
+        await supabase
+          .from("profiles")
+          .update({
+            title: profileTitle,
+            first_name: profileFirstName,
+            last_name: profileLastName,
+          })
+          .eq("id", user.id);
       }
     }
   }

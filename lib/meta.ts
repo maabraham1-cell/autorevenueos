@@ -1,7 +1,7 @@
 /**
  * Meta (Facebook Messenger / Instagram) send reply helper.
  * Replies are subject to platform messaging rules (e.g. 24-hour window, messaging_type RESPONSE).
- * Production would also need signature verification (X-Hub-Signature-256) and stricter event filtering.
+ * Use pageAccessToken when sending for a specific business (from Connect Facebook); otherwise falls back to env.
  */
 
 const META_SEND_URL = "https://graph.facebook.com/v21.0/me/messages";
@@ -9,14 +9,16 @@ const META_SEND_URL = "https://graph.facebook.com/v21.0/me/messages";
 export async function sendMetaReply({
   recipientId,
   text,
+  pageAccessToken,
 }: {
   recipientId: string;
   text: string;
+  pageAccessToken?: string | null;
 }): Promise<Record<string, unknown>> {
-  const token = process.env.META_PAGE_ACCESS_TOKEN;
+  const token = (pageAccessToken && pageAccessToken.trim()) || process.env.META_PAGE_ACCESS_TOKEN;
   if (!token) {
     throw new Error(
-      "META_PAGE_ACCESS_TOKEN is required to send Meta replies. Set it in .env.local (can be a placeholder for local testing)."
+      "No Meta page token: connect a Facebook Page in Settings, or set META_PAGE_ACCESS_TOKEN for testing."
     );
   }
 

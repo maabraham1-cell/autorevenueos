@@ -8,6 +8,22 @@ import { trackEvent } from '@/lib/ga4';
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
 
+const TITLE_OPTIONS = ['', 'Mr', 'Mrs', 'Miss', 'Ms', 'Dr', 'Prof', 'Prefer not to say'] as const;
+const BUSINESS_TYPE_OPTIONS = [
+  '',
+  'Salon',
+  'Clinic',
+  'Dental',
+  'Aesthetics',
+  'Trades',
+  'Professional Services',
+  'Other',
+] as const;
+
+function RequiredAsterisk() {
+  return <span className="text-red-600" aria-hidden="true">* </span>;
+}
+
 function LoginForm() {
   const supabase = createSupabaseBrowserClient();
   const router = useRouter();
@@ -17,9 +33,12 @@ function LoginForm() {
     (searchParams.get('mode') as 'login' | 'signup' | null) ?? 'login';
 
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
-  const [fullName, setFullName] = useState('');
+  const [title, setTitle] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [businessName, setBusinessName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [businessMobile, setBusinessMobile] = useState('');
+  const [businessType, setBusinessType] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
@@ -61,6 +80,14 @@ function LoginForm() {
   const signupPasswordStrongEnough =
     mode !== 'signup' || passwordStrength === 'medium' || passwordStrength === 'strong';
 
+  const signupFieldsComplete =
+    title.trim().length > 0 &&
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    businessName.trim().length > 0 &&
+    businessMobile.trim().length > 0 &&
+    businessType.trim().length > 0;
+
   const canSubmit =
     !loading &&
     humanVerified &&
@@ -68,7 +95,10 @@ function LoginForm() {
     password.trim().length > 0 &&
     (!TURNSTILE_SITE_KEY || turnstileToken.length > 0) &&
     (mode === 'login' ||
-      (signupPasswordStrongEnough && passwordConfirm.length > 0 && passwordsMatch));
+      (signupFieldsComplete &&
+        signupPasswordStrongEnough &&
+        passwordConfirm.length > 0 &&
+        passwordsMatch));
 
   useEffect(() => {
     const qMode = searchParams.get('mode');
@@ -128,17 +158,13 @@ function LoginForm() {
       });
       if (!verifyRes.ok) {
         resetTurnstile();
-        const data = await verifyRes.json().catch(() => ({}));
-        setError(data?.error ?? 'Verification expired or failed. Please verify again.');
+        setError('Human verification failed. Please try again.');
         setLoading(false);
         return;
       }
     }
 
     if (mode === 'signup') {
-      const profileName = fullName.trim();
-      const bizName = businessName.trim();
-      const phoneValue = phone.trim();
       if (!email.trim() || !password.trim()) {
         setError('Please enter your email and password.');
         return;
@@ -155,8 +181,15 @@ function LoginForm() {
         setError('Passwords do not match.');
         return;
       }
-      if (!profileName || !bizName || !phoneValue) {
-        setError('Please fill in your name, business name, and phone number.');
+      if (
+        !title.trim() ||
+        !firstName.trim() ||
+        !lastName.trim() ||
+        !businessName.trim() ||
+        !businessMobile.trim() ||
+        !businessType.trim()
+      ) {
+        setError('Please complete all required fields.');
         return;
       }
     }
@@ -164,10 +197,7 @@ function LoginForm() {
     setLoading(true);
     try {
       if (mode === 'signup') {
-        const profileName = fullName.trim();
-        const bizName = businessName.trim();
-        const phoneValue = phone.trim();
-
+        const fullNameValue = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
@@ -175,9 +205,13 @@ function LoginForm() {
           options: {
             emailRedirectTo: origin ? `${origin}/auth/callback?next=/setup` : undefined,
             data: {
-              full_name: profileName || null,
-              business_name: bizName || null,
-              phone: phoneValue || null,
+              title: title.trim() || null,
+              first_name: firstName.trim() || null,
+              last_name: lastName.trim() || null,
+              full_name: fullNameValue || null,
+              business_name: businessName.trim() || null,
+              business_mobile: businessMobile.trim() || null,
+              business_type: businessType.trim() || null,
             },
           },
         });
@@ -240,7 +274,7 @@ function LoginForm() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#020617] px-4 py-10 sm:py-14">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl sm:p-8">
+      <div className={`w-full rounded-2xl bg-white p-6 shadow-xl sm:p-8 ${mode === 'signup' ? 'max-w-lg' : 'max-w-md'}`}>
         <h1 className="text-2xl font-bold text-[#0F172A]">
           {mode === 'login' ? 'Log in to AutoRevenueOS' : 'Create your AutoRevenueOS account'}
         </h1>
@@ -281,78 +315,141 @@ function LoginForm() {
         <form onSubmit={handleSubmit} className="mt-4 space-y-4" noValidate>
           {mode === 'signup' && (
             <>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                  Full name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="Alex Smith"
-                  suppressHydrationWarning
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                  Business name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="Oakwood Dental Clinic"
-                  suppressHydrationWarning
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                  Mobile number
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="+44 7700 900123"
-                  suppressHydrationWarning
-                />
-                <p className="mt-1 text-[11px] text-[#94A3B8]">
-                  Used so we can contact you about your account and recoveries. We won&apos;t spam you.
-                </p>
-              </div>
+              <section className="space-y-4 rounded-lg border border-[#E5E7EB] bg-[#FAFAFA]/50 px-4 py-4">
+                <h2 className="text-sm font-bold text-[#0F172A]">About you</h2>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-sm font-medium text-[#0F172A]">
+                      <RequiredAsterisk />Title
+                    </label>
+                    <select
+                      required
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                      aria-required="true"
+                    >
+                      <option value="">Please select</option>
+                      {TITLE_OPTIONS.filter((o) => o !== '').map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-[#0F172A]">
+                      <RequiredAsterisk />First name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                      aria-required="true"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#0F172A]">
+                    <RequiredAsterisk />Last name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                    aria-required="true"
+                  />
+                </div>
+              </section>
+
+              <section className="space-y-4 rounded-lg border border-[#E5E7EB] bg-[#FAFAFA]/50 px-4 py-4">
+                <h2 className="text-sm font-bold text-[#0F172A]">About your business</h2>
+                <div>
+                  <label className="block text-sm font-medium text-[#0F172A]">
+                    <RequiredAsterisk />Business name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                    aria-required="true"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#0F172A]">
+                    <RequiredAsterisk />Business type
+                  </label>
+                  <select
+                    required
+                    value={businessType}
+                    onChange={(e) => setBusinessType(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                    aria-required="true"
+                  >
+                    {BUSINESS_TYPE_OPTIONS.map((opt) => (
+                      <option key={opt || '_'} value={opt}>
+                        {opt || 'Select'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </section>
             </>
           )}
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-              Email
-            </label>
+
+          <section className={mode === 'signup' ? 'space-y-4 rounded-lg border border-[#E5E7EB] bg-[#FAFAFA]/50 px-4 py-4' : ''}>
+            {mode === 'signup' && (
+              <h2 className="text-sm font-bold text-[#0F172A]">Account details</h2>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-[#0F172A]">
+                <RequiredAsterisk />Email
+              </label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-              suppressHydrationWarning
+              className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+              aria-required="true"
             />
-          </div>
-          <div>
-            <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-              Password
-            </label>
+            </div>
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-sm font-medium text-[#0F172A]">
+                  <RequiredAsterisk />Business mobile
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={businessMobile}
+                  onChange={(e) => setBusinessMobile(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                  aria-required="true"
+                />
+                <p className="mt-1 text-xs text-[#64748B]">
+                  Used to contact you about your account and recoveries.
+                </p>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-[#0F172A]">
+                <RequiredAsterisk />Password
+              </label>
             <input
               type="password"
               required
               minLength={8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-              suppressHydrationWarning
+              className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+              aria-required="true"
             />
             {mode === 'signup' && (
               <div className="mt-2 space-y-1">
@@ -426,8 +523,8 @@ function LoginForm() {
           </div>
           {mode === 'signup' && (
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                Confirm password
+              <label className="block text-sm font-medium text-[#0F172A]">
+                <RequiredAsterisk />Confirm password
               </label>
               <input
                 type="password"
@@ -435,14 +532,16 @@ function LoginForm() {
                 minLength={8}
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-[#E5E7EB] px-3 py-2.5 text-sm focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                suppressHydrationWarning
+                className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#1E3A8A] focus:outline-none focus:ring-1 focus:ring-[#1E3A8A]"
+                aria-required="true"
               />
               {!passwordsMatch && passwordConfirm.length > 0 && (
-                <p className="mt-1 text-xs text-red-600">Passwords do not match.</p>
+                <p className="mt-1 text-xs text-red-600" role="alert">Passwords do not match.</p>
               )}
             </div>
           )}
+          </section>
+
           <div className="pt-1">
             {TURNSTILE_SITE_KEY ? (
               <>
@@ -454,7 +553,7 @@ function LoginForm() {
                 <div className="flex flex-col gap-1.5">
                   <div ref={turnstileContainerRef} className="min-h-[65px] w-full" />
                   {humanVerified && (
-                    <p className="text-xs font-medium text-emerald-700">Verified</p>
+                    <p className="text-xs font-medium text-emerald-700">✔ Verified</p>
                   )}
                 </div>
               </>
@@ -472,7 +571,7 @@ function LoginForm() {
                   />
                   <span>
                     {humanVerified ? (
-                      <span className="font-medium text-emerald-700">Verified</span>
+                      <span className="font-medium text-emerald-700">✔ Verified</span>
                     ) : (
                       'Verify you are human'
                     )}

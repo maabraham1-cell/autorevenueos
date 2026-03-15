@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-hidden="true">
+  <!-- Three concentric quarter-circle arcs (bottom-left to up-right), then arrow. -->
+  <g fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 16 64 A 16 16 0 0 1 32 48"/>
+    <path d="M 16 64 A 32 32 0 0 1 48 32"/>
+    <path d="M 16 64 A 48 48 0 0 1 64 16"/>
+  </g>
+  <!-- Arrow: bold upward-pointing from end of third arc -->
+  <path fill="currentColor" stroke="none"
+    d="M 64 16 L 76 4 L 72 24 L 64 16 Z"/>
+</svg>

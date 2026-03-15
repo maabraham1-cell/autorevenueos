@@ -139,6 +139,7 @@ Login and signup require human verification before submit. If **Cloudflare Turns
 - **Env:** `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (client) and `TURNSTILE_SECRET_KEY` (server).
 - The Turnstile widget is shown on the login page; on success it provides a token. On submit, the app calls **`POST /api/turnstile-verify`** with the token; the API verifies it with Cloudflare’s Siteverify API. If verification fails or the token is expired, the user must complete the challenge again.
 - After an auth failure (e.g. wrong password), the widget is reset so the user must verify again on retry.
+- **Token verification before Supabase:** On submit, the client calls **POST /api/turnstile-verify** with the token before calling Supabase. If verification fails, the error "Human verification failed. Please try again." is shown and Supabase is never called. If it succeeds, signUp or signInWithPassword runs as before; email confirmation and redirect to /setup are unchanged. The submit button stays disabled until Turnstile verification succeeds.
 
 If Turnstile keys are not set, a simple “Verify you are human” checkbox is shown instead (no server verification).
 

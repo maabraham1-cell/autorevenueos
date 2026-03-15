@@ -1,18 +1,23 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 const AddCardForm = dynamic(() => import('@/components/billing/AddCardForm'), { ssr: false });
 
 const INDUSTRY_OPTIONS = [
   '',
-  'Beauty / Salon',
+  'Salon',
+  'Clinic',
   'Dental',
+  'Aesthetics',
+  'Trades',
+  'Professional Services',
+  'Beauty / Salon',
   'Healthcare Clinic',
   'Fitness / Wellness',
   'Trades / Local Services',
-  'Professional Services',
   'Restaurant / Hospitality',
   'Other',
 ];
@@ -42,7 +47,9 @@ type SettingsData = {
   location: string;
   auto_reply_template: string;
   meta_page_id: string;
+  meta_page_name: string;
   twilio_phone_number?: string;
+  business_mobile?: string;
   acuity_api_key?: string;
   square_merchant_id?: string;
   activation_status?: string;
@@ -62,6 +69,7 @@ type BookingIntegrationProvider = {
 };
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -86,6 +94,11 @@ export default function SettingsPage() {
   const [billingSetupSecret, setBillingSetupSecret] = useState<string | null>(null);
   const [billingSetupLoading, setBillingSetupLoading] = useState(false);
   const [billingSetupError, setBillingSetupError] = useState<string | null>(null);
+  const [metaPages, setMetaPages] = useState<{ id: string; name: string }[]>([]);
+  const [metaSelectPageId, setMetaSelectPageId] = useState('');
+  const [metaConnectCompleteLoading, setMetaConnectCompleteLoading] = useState(false);
+  const [metaDisconnectLoading, setMetaDisconnectLoading] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
 
   const previewText = (() => {
     const businessName =
@@ -138,7 +151,9 @@ export default function SettingsPage() {
         location: isLocInList ? loc : (loc ? 'Other' : ''),
         auto_reply_template: settings.auto_reply_template ?? '',
         meta_page_id: settings.meta_page_id ?? '',
+        meta_page_name: settings.meta_page_name ?? '',
         twilio_phone_number: settings.twilio_phone_number ?? '',
+        business_mobile: settings.business_mobile ?? '',
         acuity_api_key: settings.acuity_api_key ?? '',
         square_merchant_id: settings.square_merchant_id ?? '',
         activation_status: settings.activation_status ?? 'payment_required',
@@ -155,6 +170,27 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const metaSelect = searchParams.get('meta') === 'select';
+  const metaErrorParam = searchParams.get('meta') === 'error' ? searchParams.get('message') ?? null : null;
+
+  useEffect(() => {
+    if (metaSelect && data?.id) {
+      setMetaError(null);
+      fetch('/api/meta/pages')
+        .then((res) => res.json())
+        .then((json) => {
+          const list = Array.isArray((json as { pages?: { id: string; name: string }[] }).pages) ? (json as { pages: { id: string; name: string }[] }).pages : [];
+          setMetaPages(list);
+          if (list.length > 0) setMetaSelectPageId((id) => id || list[0].id);
+        })
+        .catch(() => setMetaPages([]));
+    }
+  }, [metaSelect, data?.id]);
+
+  useEffect(() => {
+    if (metaErrorParam) setMetaError(decodeURIComponent(metaErrorParam));
+  }, [metaErrorParam]);
 
   useEffect(() => {
     if (noBusiness || !data?.id) return;
@@ -207,6 +243,7 @@ export default function SettingsPage() {
         body: JSON.stringify({
           name: form.name ?? '',
           industry: (form.industry ?? '').trim() || null,
+          business_mobile: (form.business_mobile ?? '').trim() || null,
           booking_link: form.booking_link ?? '',
           average_booking_value: Number(form.average_booking_value) || 60,
           location: locationValue,
@@ -234,9 +271,10 @@ export default function SettingsPage() {
           auto_reply_template: String(form.auto_reply_template ?? ''),
           meta_page_id: String(form.meta_page_id ?? ''),
           twilio_phone_number: String(form.twilio_phone_number ?? ''),
+          business_mobile: String(form.business_mobile ?? ''),
           acuity_api_key: String(form.acuity_api_key ?? ''),
           square_merchant_id: String(form.square_merchant_id ?? ''),
-        });
+        } as SettingsData);
       }
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
@@ -340,7 +378,20 @@ export default function SettingsPage() {
                     <option key={opt || '_'} value={opt}>{opt || 'Select industry…'}</option>
                   ))}
                 </select>
-                <p className="mt-1 text-[11px] text-[#94A3B8]">Optional.</p>
+                <p className="mt-1 text-[11px] text-[#94A3B8]">Optional. Pre-filled from signup if provided.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
+                  Business mobile
+                </label>
+                <input
+                  type="tel"
+                  value={form.business_mobile ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, business_mobile: e.target.value }))}
+                  className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] transition-colors focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                />
+                <p className="mt-1 text-[11px] text-[#94A3B8]">Primary contact number. Pre-filled from signup.</p>
               </div>
 
               <div>
@@ -407,32 +458,105 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">
-                  Meta page ID
-                </label>
-                <input
-                  type="text"
-                  value={form.meta_page_id ?? ''}
-                  onChange={(e) => setForm((f) => ({ ...f, meta_page_id: e.target.value }))}
-                  className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] transition-colors focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                  placeholder="e.g. 123456789012345"
-                />
-                <p className="mt-1 text-[11px] text-[#94A3B8]">
-                  Used to route Meta/Instagram webhook events to this business. Must match the page/account ID configured in Meta.
+              <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+                <h3 className="text-sm font-semibold text-[#0F172A]">Facebook &amp; Instagram messaging</h3>
+                <p className="mt-2 text-xs text-[#475569]">
+                  Connect your Facebook Page to receive messages in the Inbox and send auto-replies. Messaging is for <strong>leads and conversations only</strong> — you are not charged £3 for Facebook or Instagram messages. A £3 charge happens only when a <strong>confirmed booking</strong> is recorded from a trusted booking source (e.g. your booking system or calendar).
                 </p>
-                <p className="mt-1 text-[11px] text-[#94A3B8]">
-                  Status:{" "}
-                  {(!form.meta_page_id || form.meta_page_id.trim().length === 0) ? (
-                    <span className="font-semibold text-[#DC2626]">Not configured</span>
-                  ) : (
-                    <span className="font-semibold text-[#16A34A]">Configured</span>
-                  )}
-                  .
-                </p>
-                <p className="mt-1 text-[11px] text-[#94A3B8]">
-                  Test: 1) Set Meta Page ID, 2) Save, 3) Send a test message, 4) Check Inbox.
-                </p>
+                {metaError && (
+                  <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                    {metaError}
+                  </div>
+                )}
+                {(form.meta_page_id ?? '').trim() ? (
+                  <div className="mt-4">
+                    <p className="text-sm font-medium text-[#0F172A]">
+                      Connected as <span className="font-semibold text-[#16A34A]">{(form.meta_page_name ?? data?.meta_page_name ?? 'Facebook Page').trim() || 'Facebook Page'}</span>
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#64748B]">Inbox and auto-replies are linked to this Page.</p>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setMetaError(null);
+                        setMetaDisconnectLoading(true);
+                        try {
+                          const res = await fetch('/api/meta/disconnect', { method: 'POST' });
+                          const json = await res.json().catch(() => ({}));
+                          if (!res.ok) {
+                            setMetaError(json?.error ?? 'Failed to disconnect');
+                            return;
+                          }
+                          await loadSettings();
+                          setForm((f) => ({ ...f, meta_page_id: '', meta_page_name: '' }));
+                          setData((d) => (d ? { ...d, meta_page_id: '', meta_page_name: '' } : d));
+                        } catch {
+                          setMetaError('Something went wrong.');
+                        } finally {
+                          setMetaDisconnectLoading(false);
+                        }
+                      }}
+                      disabled={metaDisconnectLoading}
+                      className="mt-3 rounded-lg border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FAFC] disabled:opacity-60"
+                    >
+                      {metaDisconnectLoading ? 'Disconnecting…' : 'Disconnect'}
+                    </button>
+                  </div>
+                ) : metaSelect && metaPages.length > 0 ? (
+                  <div className="mt-4">
+                    <label className="block text-xs font-medium uppercase tracking-wide text-[#64748B]">Select a Page</label>
+                    <select
+                      value={metaSelectPageId}
+                      onChange={(e) => setMetaSelectPageId(e.target.value)}
+                      className="mt-1.5 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm text-[#0F172A] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                    >
+                      {metaPages.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setMetaError(null);
+                        setMetaConnectCompleteLoading(true);
+                        try {
+                          const res = await fetch('/api/meta/connect-complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ page_id: metaSelectPageId }),
+                          });
+                          const json = await res.json().catch(() => ({}));
+                          if (!res.ok) {
+                            setMetaError(json?.error ?? 'Failed to connect');
+                            return;
+                          }
+                          await loadSettings();
+                          setForm((f) => ({ ...f, meta_page_id: json.meta_page_id ?? metaSelectPageId, meta_page_name: json.meta_page_name ?? '' }));
+                          setData((d) => (d ? { ...d, meta_page_id: json.meta_page_id ?? metaSelectPageId, meta_page_name: json.meta_page_name ?? '' } : d));
+                          setMetaPages([]);
+                          window.history.replaceState({}, '', '/settings');
+                        } catch {
+                          setMetaError('Something went wrong.');
+                        } finally {
+                          setMetaConnectCompleteLoading(false);
+                        }
+                      }}
+                      disabled={metaConnectCompleteLoading || !metaSelectPageId}
+                      className="mt-3 rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
+                    >
+                      {metaConnectCompleteLoading ? 'Connecting…' : 'Confirm and connect'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <a
+                      href="/api/meta/connect"
+                      className="inline-flex items-center rounded-lg bg-[#1877F2] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#166FE5]"
+                    >
+                      Connect Facebook
+                    </a>
+                    <p className="mt-2 text-[11px] text-[#64748B]">You’ll sign in with Facebook and choose which Page to link. We’ll store the correct ID and token for webhooks.</p>
+                  </div>
+                )}
               </div>
 
               <div className="border-t border-[#E5E7EB] pt-4 mt-4">
@@ -483,7 +607,7 @@ export default function SettingsPage() {
           <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
             <h2 className="text-sm font-semibold text-[#0F172A]">Billing &amp; activation</h2>
             <p className="mt-1 text-xs text-[#64748B]">
-              Add a card to activate AutoRevenueOS. You&apos;ll only be charged when a booking is confirmed (£3 per confirmed booking). No upfront charge.
+              Add a card to activate AutoRevenueOS. You&apos;re only charged when a <strong>confirmed booking</strong> is recorded from a trusted source (£3 per confirmed booking). Facebook and Instagram messages do not trigger a charge. No upfront fee.
             </p>
             {(form.activation_status ?? data?.activation_status ?? 'payment_required') === 'active' ? (
               <div className="mt-4 flex flex-wrap items-center gap-2">

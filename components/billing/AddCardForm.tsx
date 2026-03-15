@@ -12,10 +12,12 @@ function AddCardFormInner({
   clientSecret,
   onSuccess,
   onCancel,
+  returnPath = '/settings',
 }: {
   clientSecret: string;
   onSuccess: () => void;
   onCancel: () => void;
+  returnPath?: string;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -32,7 +34,7 @@ function AddCardFormInner({
         elements,
         clientSecret,
         confirmParams: {
-          return_url: (typeof window !== 'undefined' ? window.location.origin : '') + '/settings',
+          return_url: (typeof window !== 'undefined' ? window.location.origin : '') + returnPath,
           payment_method_data: {
             billing_details: { address: { country: 'GB' } },
           },
@@ -104,15 +106,17 @@ export default function AddCardForm({
   clientSecret,
   onSuccess,
   onCancel,
+  returnPath,
 }: {
   clientSecret: string;
   onSuccess: () => void;
   onCancel: () => void;
+  returnPath?: string;
 }) {
   if (!stripePromise) return null;
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
-      <AddCardFormInner clientSecret={clientSecret} onSuccess={onSuccess} onCancel={onCancel} />
+      <AddCardFormInner clientSecret={clientSecret} onSuccess={onSuccess} onCancel={onCancel} returnPath={returnPath} />
     </Elements>
   );
 }

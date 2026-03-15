@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
     return NextResponse.json(
-      { error: 'Verification failed', errorCodes: result['error-codes'] },
+      { error: 'Human verification failed. Please try again.', errorCodes: result['error-codes'] },
       { status: 400 }
     );
   } catch (e) {
