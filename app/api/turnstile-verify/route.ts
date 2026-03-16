@@ -49,12 +49,39 @@ export async function POST(request: NextRequest) {
         ...(remoteip && { remoteip }),
       }),
     });
-    const result = (await res.json()) as { success?: boolean; 'error-codes'?: string[] };
+    const result = (await res.json()) as {
+      success?: boolean;
+      'error-codes'?: string[];
+      message?: string;
+    };
+    const errorCodes = result['error-codes'] ?? [];
+
     if (result.success) {
       return NextResponse.json({ success: true });
     }
+
+    // Log so you can see the real reason in Vercel logs
+    console.warn('[turnstile-verify] Cloudflare siteverify failed', {
+      errorCodes,
+      message: result.message,
+      httpStatus: res.status,
+    });
+
+    // Map common Cloudflare error codes to a clearer message
+    const code = errorCodes[0];
+    let userMessage = 'Human verification failed. Please try again.';
+    if (code === 'missing-input-secret' || code === 'invalid-input-secret') {
+      userMessage = 'Verification is misconfigured. Please try again later.';
+    } else if (code === 'timeout-or-duplicate') {
+      userMessage = 'Verification expired or was already used. Complete the challenge again and submit.';
+    } else if (code === 'invalid-input-response') {
+      userMessage = 'Verification failed. Complete the challenge again and submit.';
+    } else if (code === 'bad-request') {
+      userMessage = 'Verification request was invalid. Please try again.';
+    }
+
     return NextResponse.json(
-      { error: 'Human verification failed. Please try again.', errorCodes: result['error-codes'] },
+      { error: userMessage, errorCodes },
       { status: 400 }
     );
   } catch (e) {

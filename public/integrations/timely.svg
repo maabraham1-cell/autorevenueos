@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="timely-logo-title">
+  <title id="timely-logo-title">Timely</title>
+  <rect x="6" y="6" width="52" height="52" rx="18" fill="#0B1120"/>
+  <path
+    d="M20 22h24v4h-9v18h-6V26h-9v-4Z"
+    fill="#22C55E"
+  />
+</svg>
+

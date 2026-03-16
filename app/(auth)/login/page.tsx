@@ -53,6 +53,7 @@ function LoginForm() {
   const turnstileContainerRef = useRef<HTMLDivElement>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const [turnstileReady, setTurnstileReady] = useState(false);
+  const submittingRef = useRef(false);
 
   const resetTurnstile = () => {
     setTurnstileToken('');
@@ -140,17 +141,21 @@ function LoginForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError(null);
     setEmailVerificationSent(null);
+    setLoading(true);
 
     if (!humanVerified) {
       setHumanTouched(true);
       setError('Please verify you are human.');
+      setLoading(false);
+      submittingRef.current = false;
       return;
     }
 
     if (TURNSTILE_SITE_KEY && turnstileToken) {
-      setLoading(true);
       const verifyRes = await fetch('/api/turnstile-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,8 +163,10 @@ function LoginForm() {
       });
       if (!verifyRes.ok) {
         resetTurnstile();
-        setError('Human verification failed. Please try again.');
+        const verifyData = (await verifyRes.json().catch(() => ({}))) as { error?: string };
+        setError(verifyData.error ?? 'Human verification failed. Please try again.');
         setLoading(false);
+        submittingRef.current = false;
         return;
       }
     }
@@ -167,18 +174,26 @@ function LoginForm() {
     if (mode === 'signup') {
       if (!email.trim() || !password.trim()) {
         setError('Please enter your email and password.');
+        setLoading(false);
+        submittingRef.current = false;
         return;
       }
       if (password.length < 8) {
         setError('Password must be at least 8 characters.');
+        setLoading(false);
+        submittingRef.current = false;
         return;
       }
       if (!signupPasswordStrongEnough) {
         setError('Password is too weak. Please use at least 8 characters with letters and numbers.');
+        setLoading(false);
+        submittingRef.current = false;
         return;
       }
       if (passwordConfirm.length === 0 || passwordConfirm !== password) {
         setError('Passwords do not match.');
+        setLoading(false);
+        submittingRef.current = false;
         return;
       }
       if (
@@ -190,11 +205,12 @@ function LoginForm() {
         !businessType.trim()
       ) {
         setError('Please complete all required fields.');
+        setLoading(false);
+        submittingRef.current = false;
         return;
       }
     }
 
-    setLoading(true);
     try {
       if (mode === 'signup') {
         const fullNameValue = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
@@ -269,6 +285,7 @@ function LoginForm() {
       }
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

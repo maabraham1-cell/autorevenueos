@@ -113,7 +113,7 @@ export const BOOKING_PROVIDERS: BookingProvider[] = [
   },
   {
     id: "feed",
-    name: "Generic feed (Zapier / Make / Pipedream)",
+    name: "Automation tools (Zapier / Make / Pipedream)",
     status: "full",
     trustLevel: "bridge",
     trustLabel: "Bridge (secret required in production)",

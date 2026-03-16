@@ -4,6 +4,7 @@ import { sendRecoverySms } from "@/lib/sms";
 import { verifyTwilioRequest } from "@/lib/twilioWebhook";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { normalizePhone } from "@/lib/phone";
+import { buildWhatsAppBookingLink, sendWhatsAppTextMessage } from "@/lib/whatsapp";
 
 const SMS_CHANNEL = "sms";
 
@@ -287,6 +288,65 @@ export async function POST(request: Request) {
         { success: false, error: messageText },
         { status: 500 }
       );
+    }
+
+    // Optional WhatsApp recovery: when enabled for the business, send a follow-up
+    // WhatsApp message that includes the booking link with attribution parameters.
+    const bookingLinkRaw = (business.booking_link as string | null) ?? null;
+    const whatsappEnabled =
+      (business as any).whatsapp_recovery_enabled === true ||
+      (business as any).whatsapp_recovery_enabled === "true";
+
+    if (whatsappEnabled && bookingLinkRaw) {
+      try {
+        const waBookingLink = buildWhatsAppBookingLink({
+          bookingLink: bookingLinkRaw,
+          source: "whatsapp",
+          missedCallId: event.id as string,
+        });
+
+        if (waBookingLink) {
+          const businessName =
+            (typeof business.name === "string" && business.name.trim().length > 0
+              ? business.name.trim()
+              : "your business") ?? "your business";
+
+          const text = [
+            `Sorry we missed your call from ${businessName}.`,
+            `You can book here: ${waBookingLink}`,
+          ].join(" ");
+
+          await sendWhatsAppTextMessage({
+            to: normalizedPhone,
+            text,
+            // Per-business overrides can be wired later; for now rely on env-level config.
+            phoneNumberId: (business as any).meta_page_id as string | undefined,
+            accessToken: (business as any).meta_page_access_token as string | undefined,
+          });
+
+          // Log the outbound WhatsApp message so it shows in the inbox thread.
+          const { error: waMessageError } = await supabase.from("messages").insert({
+            business_id: business.id,
+            contact_id: contact.id,
+            channel: "whatsapp",
+            direction: "outbound",
+            body: text,
+          });
+
+          if (waMessageError) {
+            console.error("[missed-call] WhatsApp message insert error:", {
+              requestId,
+              error: waMessageError.message,
+            });
+          }
+        }
+      } catch (waError) {
+        console.error("[missed-call] sendRecoveryWhatsApp error:", {
+          requestId,
+          error: waError,
+        });
+        // Failure to send WhatsApp should not fail the whole recovery; SMS still succeeded.
+      }
     }
 
     // Attach the actual SMS body and Twilio SID to the stored outbound message

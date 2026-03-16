@@ -259,7 +259,7 @@ export default function TermsPage() {
           Scotland
         </p>
         <p className="mt-2">
-          Email: <a href="mailto:hello@autorevenueos.com">hello@autorevenueos.com</a>
+          Email: <a href="mailto:support@autorevenueos.com">support@autorevenueos.com</a>
         </p>
       </section>
     </LegalPageLayout>

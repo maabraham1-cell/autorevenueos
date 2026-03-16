@@ -21,7 +21,7 @@ These are system emails; replies are not expected. In the Supabase Dashboard:
 If you use the built-in Supabase mailer, configure the sender in **Authentication → Email** (or equivalent) so all auth emails (confirm signup, magic link, recovery, invite) use this identity.
 
 **Support contact in emails:**  
-Every template footer references **hello@autorevenueos.com** for help.
+Every template footer should reference **support@autorevenueos.com** for help. Use **hello@autorevenueos.com** for general sales or partnership enquiries outside the product.
 
 ---
 
@@ -78,7 +78,7 @@ All of these:
 - Use a **white card** layout, ~600px max-width, centred.
 - Use **AutoRevenueOS blue** (#1E3A8A) for the main CTA button and branding.
 - Include the **AutoRevenueOS** heading and tagline: *Turn missed calls into confirmed bookings automatically.*
-- Include the footer: *Need help? Contact hello@autorevenueos.com* and the tagline.
+- Include the footer: *Need help? Contact support@autorevenueos.com* and the tagline.
 - Use **inline CSS** only (email-client safe).
 - **Do not remove or rename** Supabase template variables (e.g. `{{ .ConfirmationURL }}`, `{{ .Token }}`, `{{ .Email }}`, `{{ .OldEmail }}`, `{{ .Provider }}`, `{{ .FactorType }}`, etc.).
 
@@ -92,7 +92,7 @@ Auth templates (confirm signup, magic link, reset password, invite, change email
 - **Headline:** Confirm your AutoRevenueOS account  
 - **Body:** Thanks for signing up for AutoRevenueOS. Click the button below to confirm your email and activate your account. Once confirmed, you'll be able to start recovering missed calls and converting them into bookings automatically.  
 - **Button:** Confirm your email  
-- **Footer:** If you didn't create an AutoRevenueOS account, you can safely ignore this email. Need help? Contact hello@autorevenueos.com. AutoRevenueOS — Turn missed calls into confirmed bookings automatically.
+- **Footer:** If you didn't create an AutoRevenueOS account, you can safely ignore this email. Need help? Contact support@autorevenueos.com. AutoRevenueOS — Turn missed calls into confirmed bookings automatically.
 
 ---
 

@@ -179,7 +179,7 @@ export default function PrivacyPage() {
           <li><strong>Complain:</strong> Lodge a complaint with the Information Commissioner&apos;s Office (ICO) in the UK.</li>
         </ul>
         <p>
-          To exercise these rights, contact us at <a href="mailto:hello@autorevenueos.com">hello@autorevenueos.com</a>. We will respond within the
+          To exercise these rights, contact us at <a href="mailto:support@autorevenueos.com">support@autorevenueos.com</a>. We will respond within the
           timeframes required by law. For data we process on your behalf as a processor (e.g. your end
           customers&apos; data), we will assist you in responding to their requests where set out in our agreement
           with you.
@@ -224,7 +224,7 @@ export default function PrivacyPage() {
           Scotland
         </p>
         <p className="mt-2">
-          Email: <a href="mailto:hello@autorevenueos.com">hello@autorevenueos.com</a>
+          Email: <a href="mailto:support@autorevenueos.com">support@autorevenueos.com</a>
         </p>
       </section>
     </LegalPageLayout>

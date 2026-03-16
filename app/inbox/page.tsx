@@ -157,7 +157,8 @@ function InboxContent() {
   const hasConversations = (filteredConversations?.length ?? 0) > 0;
 
   const isWebsiteChat = selectedConversation?.channel === "website_chat";
-  const canReply = isWebsiteChat && selectedConversation?.contact_id;
+  const isWhatsApp = selectedConversation?.channel === "whatsapp";
+  const canReply = !!selectedConversation?.contact_id && (isWebsiteChat || isWhatsApp);
 
   async function handleSendReply(e: React.FormEvent) {
     e.preventDefault();
@@ -167,7 +168,11 @@ function InboxContent() {
     setSendingReply(true);
     setReplyError(null);
     try {
-      const res = await fetch("/api/chat/website/reply", {
+      const endpoint = isWhatsApp
+        ? "/api/inbox/whatsapp/send"
+        : "/api/chat/website/reply";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -445,20 +450,59 @@ function InboxContent() {
                           rows={2}
                           value={replyDraft}
                           onChange={(e) => setReplyDraft(e.target.value)}
-                          placeholder="Reply to website visitor…"
+                          placeholder={
+                            isWhatsApp
+                              ? "Reply in WhatsApp…"
+                              : "Reply to website visitor…"
+                          }
                           className="min-w-0 flex-1 rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
                           disabled={sendingReply}
                         />
-                        <button
-                          type="submit"
-                          disabled={!replyDraft.trim() || sendingReply}
-                          className="shrink-0 self-end rounded-xl bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {sendingReply ? "Sending…" : "Send"}
-                        </button>
+                        <div className="flex flex-col items-end gap-1">
+                          {isWhatsApp && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch("/api/settings");
+                                  if (!res.ok) return;
+                                  const data = (await res.json()) as {
+                                    booking_link?: string;
+                                    id: string;
+                                  };
+                                  const baseLink = (data.booking_link as string | undefined) ?? "";
+                                  if (!baseLink) return;
+                                  // For now we just append source=whatsapp; missedCallId / conversationId
+                                  // are added on the server when sending from automations.
+                                  const url = new URL(baseLink, baseLink.startsWith("http") ? undefined : "https://example.com");
+                                  url.searchParams.set("source", "whatsapp");
+                                  setReplyDraft((prev) =>
+                                    prev
+                                      ? `${prev} ${url.toString()}`
+                                      : url.toString(),
+                                  );
+                                } catch {
+                                  // silently ignore; keep UX simple
+                                }
+                              }}
+                              className="mb-1 rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-[11px] font-medium text-[#1E3A8A] shadow-sm hover:bg-[#EFF6FF]"
+                            >
+                              Insert booking link
+                            </button>
+                          )}
+                          <button
+                            type="submit"
+                            disabled={!replyDraft.trim() || sendingReply}
+                            className="shrink-0 rounded-xl bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {sendingReply ? "Sending…" : "Send"}
+                          </button>
+                        </div>
                       </div>
                       <p className="mt-1.5 text-[11px] text-[#64748B]">
-                        Replies appear in the visitor&apos;s chat widget within a few seconds.
+                        {isWhatsApp
+                          ? "Reply instantly in WhatsApp and send customers your booking link."
+                          : "Replies appear in the visitor&apos;s chat widget within a few seconds."}
                       </p>
                     </form>
                   )}

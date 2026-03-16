@@ -6,6 +6,15 @@ import { RevenueCalculator } from '@/components/calculator/RevenueCalculator';
 import { WebsiteChatWidget } from '@/components/chat/WebsiteChatWidget';
 
 export default function MarketingPage() {
+  const scrollToRevenueCheck = (event?: React.MouseEvent) => {
+    if (event) event.preventDefault();
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById('revenue-check');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-[#EFF6FF] via-[#F8FAFC] to-white">
       {/* Hero — dark navy showcase, phone as centerpiece with blue glow */}
@@ -53,13 +62,14 @@ export default function MarketingPage() {
             </div>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
-                href="#calculator"
+                href="#revenue-check"
+                onClick={scrollToRevenueCheck}
                 className="inline-flex items-center justify-center rounded-xl bg-[#2563EB] px-6 py-3 text-sm font-semibold text-white shadow-[0_0_40px_-8px_rgba(59,130,246,0.6)] transition-all hover:bg-[#3B82F6] hover:shadow-[0_0_48px_-6px_rgba(59,130,246,0.7)]"
               >
                 See my potential recovered revenue
               </Link>
               <Link
-                href="/login?mode=signup"
+                href="/signup"
                 className="inline-flex items-center justify-center rounded-xl border border-white/25 bg-white/5 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/10 hover:border-white/40"
               >
                 Get started — free to install
@@ -132,7 +142,7 @@ export default function MarketingPage() {
 
       {/* Calculator — dark blue framed section, premium product surface */}
       <section
-        id="calculator"
+        id="revenue-check"
         className="relative overflow-hidden bg-[#0f172a] px-4 py-16 sm:px-6 lg:px-8"
       >
         <div
@@ -306,6 +316,35 @@ export default function MarketingPage() {
               </p>
             </div>
           </div>
+
+          {/* Logo strip */}
+          <div className="mt-10 border-t border-[#E5E7EB] pt-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6B7280]">
+              Works with tools your business already uses
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-4 text-xs text-[#6B7280]">
+              {[
+                { src: '/integrations/fresha.svg', alt: 'Fresha logo' },
+                { src: '/integrations/timely.svg', alt: 'Timely logo' },
+                { src: '/integrations/square.svg', alt: 'Square logo' },
+                { src: '/integrations/calendly.svg', alt: 'Calendly logo' },
+                { src: '/integrations/whatsapp.svg', alt: 'WhatsApp logo' },
+                { src: '/integrations/instagram.svg', alt: 'Instagram logo' },
+              ].map((logo) => (
+                <div
+                  key={logo.src}
+                  className="flex items-center gap-2 rounded-xl border border-[#E5E7EB]/60 bg-white/70 px-3 py-2 shadow-sm shadow-slate-900/5"
+                >
+                  <img
+                    src={logo.src}
+                    alt={logo.alt}
+                    className="h-7 w-7 rounded-lg bg-slate-50 object-contain"
+                    loading="lazy"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -348,7 +387,8 @@ export default function MarketingPage() {
         </div>
         <div className="relative mx-auto mt-10 max-w-6xl text-center">
           <Link
-            href="#calculator"
+            href="#revenue-check"
+            onClick={scrollToRevenueCheck}
             className="inline-flex items-center justify-center rounded-xl bg-[#1E3A8A] px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-[#1E3A8A]/30 transition-all hover:bg-[#2563EB] hover:shadow-xl hover:shadow-[#1E3A8A]/40"
           >
             See your potential recovered revenue

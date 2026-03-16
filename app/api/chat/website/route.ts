@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
   };
 
   // Notify admin when website chat hits the inbox (profile_admin notification).
-  const notifyTo = process.env.WEBSITE_CHAT_NOTIFY_EMAIL ?? "hello@autorevenue.com";
+  const notifyTo = process.env.WEBSITE_CHAT_NOTIFY_EMAIL ?? "support@autorevenueos.com";
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://www.autorevenueos.com");

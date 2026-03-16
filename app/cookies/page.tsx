@@ -178,7 +178,7 @@ export default function CookiesPage() {
         <h2>10. Contact</h2>
         <p>
           For questions about this Cookie Policy, contact us at{' '}
-          <a href="mailto:hello@autorevenueos.com">hello@autorevenueos.com</a>.
+          <a href="mailto:support@autorevenueos.com">support@autorevenueos.com</a>.
         </p>
         <p className="mt-2 text-[#334155]">
           <strong>AutoRevenue Systems LTD</strong><br />

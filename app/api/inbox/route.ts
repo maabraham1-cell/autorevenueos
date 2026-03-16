@@ -223,6 +223,8 @@ export async function GET(request: NextRequest) {
         conv.contact_label = "SMS lead";
       } else if (conv.channel === "website_chat") {
         conv.contact_label = "Website visitor";
+      } else if (conv.channel === "whatsapp") {
+        conv.contact_label = "WhatsApp";
       } else {
         conv.contact_label = `Customer #${String(customerIndex)}`;
         customerIndex += 1;

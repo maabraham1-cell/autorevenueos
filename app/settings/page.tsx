@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
@@ -68,7 +68,7 @@ type BookingIntegrationProvider = {
   canTriggerConfirmedBookingsToday: boolean;
 };
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const searchParams = useSearchParams();
   const [data, setData] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -604,11 +604,11 @@ export default function SettingsPage() {
         </section>
 
         {!noBusiness && data?.id && (
-          <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
-            <h2 className="text-sm font-semibold text-[#0F172A]">Billing &amp; activation</h2>
-            <p className="mt-1 text-xs text-[#64748B]">
-              Add a card to activate AutoRevenueOS. You&apos;re only charged when a <strong>confirmed booking</strong> is recorded from a trusted source (£3 per confirmed booking). Facebook and Instagram messages do not trigger a charge. No upfront fee.
-            </p>
+        <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
+          <h2 className="text-sm font-semibold text-[#0F172A]">Billing &amp; activation</h2>
+          <p className="mt-1 text-xs text-[#64748B]">
+            Add your card to activate AutoRevenueOS. You are only charged £3 when a <strong>confirmed booking</strong> is received from your booking system. Messages, leads and enquiries never trigger charges.
+          </p>
             {(form.activation_status ?? data?.activation_status ?? 'payment_required') === 'active' ? (
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">
@@ -863,71 +863,103 @@ export default function SettingsPage() {
         </section>
 
         <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
-          <h2 className="text-sm font-semibold text-[#0F172A]">Booking integrations</h2>
-          <p className="mt-1 text-xs text-[#64748B]">
-            Use these URLs in your booking system to send confirmed bookings to AutoRevenueOS. Only confirmed bookings (not link clicks) trigger billing. Trust: <strong>Verified</strong> = native/signed; <strong>Bridge</strong> = feed/automation (set INBOUND_FEED_SECRET in production).
-          </p>
-          {bookingIntegrations?.feed_secret_required_in_production && (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              In production, generic feed and Google Sheets endpoints require <code className="rounded bg-amber-100 px-1">INBOUND_FEED_SECRET</code> to be set; otherwise they return 503. Set the secret in your environment and send <code className="rounded bg-amber-100 px-1">Authorization: Bearer &lt;secret&gt;</code>.
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[#0F172A]">Advanced integrations</h2>
+              <p className="mt-1 text-xs text-[#64748B]">
+                For automation tools, custom feeds, and developer webhooks.
+              </p>
             </div>
-          )}
-          {integrationsLoading ? (
-            <p className="mt-4 text-sm text-[#94A3B8]">Loading URLs…</p>
-          ) : bookingIntegrations?.providers?.length ? (
-            <div className="mt-4 space-y-4">
-              {bookingIntegrations.providers.map((p) => (
-                <div key={p.id} className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC]/50 px-4 py-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-[#0F172A]">{p.name}</span>
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        p.trustLevel === 'verified' ? 'bg-emerald-100 text-emerald-800' :
-                        p.trustLevel === 'bridge' ? 'bg-sky-100 text-sky-800' :
-                        'bg-slate-100 text-slate-600'
-                      }`}
-                      title={p.trustLabel}
-                    >
-                      {p.trustLabel}
-                    </span>
-                    {p.status === 'partial' && (
-                      <span className="text-[11px] text-[#64748B]">Partial</span>
-                    )}
-                  </div>
-                  {p.setupHint && (
-                    <p className="mt-1 text-[11px] text-[#64748B]">{p.setupHint}</p>
-                  )}
-                  {p.webhookUrl && (
-                    <div className="mt-2 flex gap-2">
-                      <input
-                        readOnly
-                        value={p.webhookUrl}
-                        className="flex-1 rounded border border-[#E5E7EB] bg-white px-2.5 py-1.5 text-[11px] text-[#0F172A] font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(p.webhookUrl!);
-                          setCopiedUrl(p.id);
-                          setTimeout(() => setCopiedUrl(null), 2000);
-                        }}
-                        className="rounded border border-[#E5E7EB] bg-white px-3 py-1.5 text-xs font-medium text-[#475569] hover:bg-[#F8FAFC]"
-                      >
-                        {copiedUrl === p.id ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  )}
-                  {p.id === 'feed' && bookingIntegrations.feed_secret_required_in_production && (
-                    <p className="mt-1.5 text-[11px] text-amber-700">Requires Bearer token in production.</p>
-                  )}
+          </div>
+          <details className="mt-4 rounded-lg border border-dashed border-[#E5E7EB] bg-[#F8FAFC] px-4 py-3" defaultValue={false as unknown as string}>
+            <summary className="flex cursor-pointer items-center justify-between text-sm font-medium text-[#0F172A]">
+              <span>Show advanced booking integrations</span>
+              <span className="text-xs font-normal text-[#64748B]">For developers and power users</span>
+            </summary>
+            <div className="mt-3 border-t border-[#E5E7EB] pt-3">
+              <p className="text-xs text-[#64748B]">
+                Use these URLs in your booking system or automation tools to send confirmed bookings to AutoRevenueOS. Only confirmed bookings (not link clicks) trigger billing.
+              </p>
+              {bookingIntegrations?.feed_secret_required_in_production && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  In production, automation tools and Google Sheets endpoints require <code className="rounded bg-amber-100 px-1">INBOUND_FEED_SECRET</code> to be set; otherwise they return 503. Set the secret in your environment and send <code className="rounded bg-amber-100 px-1">Authorization: Bearer &lt;secret&gt;</code>.
                 </div>
-              ))}
+              )}
+              {integrationsLoading ? (
+                <p className="mt-4 text-sm text-[#94A3B8]">Loading URLs…</p>
+              ) : bookingIntegrations?.providers?.length ? (
+                <div className="mt-4 space-y-4">
+                  {bookingIntegrations.providers.map((p) => (
+                    <div key={p.id} className="rounded-lg border border-[#E5E7EB] bg-white px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-[#0F172A]">{p.name}</span>
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            p.trustLevel === 'verified' ? 'bg-emerald-100 text-emerald-800' :
+                            p.trustLevel === 'bridge' ? 'bg-sky-100 text-sky-800' :
+                            'bg-slate-100 text-slate-600'
+                          }`}
+                          title={p.trustLabel}
+                        >
+                          {p.trustLabel}
+                        </span>
+                        {p.status === 'partial' && (
+                          <span className="text-[11px] text-[#64748B]">Partial</span>
+                        )}
+                      </div>
+                      {p.setupHint && (
+                        <p className="mt-1 text-[11px] text-[#64748B]">{p.setupHint}</p>
+                      )}
+                      {p.webhookUrl && (
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            readOnly
+                            value={p.webhookUrl}
+                            className="flex-1 rounded border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1.5 text-[11px] text-[#0F172A] font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(p.webhookUrl!);
+                              setCopiedUrl(p.id);
+                              setTimeout(() => setCopiedUrl(null), 2000);
+                            }}
+                            className="rounded border border-[#E5E7EB] bg-white px-3 py-1.5 text-xs font-medium text-[#475569] hover:bg-[#F8FAFC]"
+                          >
+                            {copiedUrl === p.id ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                      )}
+                      {p.id === 'feed' && bookingIntegrations.feed_secret_required_in_production && (
+                        <p className="mt-1.5 text-[11px] text-amber-700">Advanced setup required.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : !noBusiness && data?.id ? (
+                <p className="mt-4 text-sm text-[#94A3B8]">Could not load integrations. Check you are signed in.</p>
+              ) : null}
             </div>
-          ) : !noBusiness && data?.id ? (
-            <p className="mt-4 text-sm text-[#94A3B8]">Could not load integrations. Check you are signed in.</p>
-          ) : null}
+          </details>
         </section>
       </div>
     </div>
+  );
+}
+
+const settingsFallback = (
+  <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="flex items-center gap-2 text-[#64748B]">
+      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#1E3A8A] border-t-transparent" />
+      <span>Loading settings…</span>
+    </div>
+  </div>
+);
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={settingsFallback}>
+      <SettingsPageContent />
+    </Suspense>
   );
 }
