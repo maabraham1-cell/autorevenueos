@@ -10,6 +10,7 @@ type InboxMessage = {
 };
 
 type InboxConversation = {
+  conversation_id: string | null;
   contact_id: string | null;
   contact_label: string;
   channel: string | null;
@@ -24,6 +25,7 @@ type InboxConversation = {
 };
 
 type ConversationAccumulator = {
+  conversation_id: string | null;
   contact_id: string | null;
   channel: string | null;
   messages: InboxMessage[];
@@ -76,7 +78,7 @@ export async function GET(request: NextRequest) {
 
     const { data: messages, error: messagesError } = await supabase
       .from("messages")
-      .select("*")
+      .select("id, contact_id, channel, direction, body, created_at, conversation_id")
       .eq("business_id", business.id)
       .order("created_at", { ascending: true });
 
@@ -103,7 +105,14 @@ export async function GET(request: NextRequest) {
     for (const row of messages) {
       const contactId = (row.contact_id as string | null) ?? null;
       const channel = (row.channel as string | null) ?? null;
-      const key = `${contactId ?? "unknown"}::${channel ?? "unknown"}`;
+      const conversationId = (row.conversation_id as string | null) ?? null;
+
+      // Primary grouping: real conversation id when present.
+      // Fallback for legacy data: contact_id + channel.
+      const key =
+        conversationId && conversationId.length > 0
+          ? `conv:${conversationId}`
+          : `${contactId ?? "unknown"}::${channel ?? "unknown"}`;
 
       const msg: InboxMessage = {
         id: String(row.id),
@@ -115,6 +124,7 @@ export async function GET(request: NextRequest) {
       let conv = conversationMap.get(key);
       if (!conv) {
         conv = {
+          conversation_id: conversationId,
           contact_id: contactId,
           channel,
           messages: [],
@@ -195,6 +205,7 @@ export async function GET(request: NextRequest) {
 
       const latestDirection = conv.latest_message_direction ?? "inbound";
       conversations.push({
+        conversation_id: conv.conversation_id,
         contact_id: conv.contact_id,
         contact_label: "",
         channel: conv.channel,
@@ -215,14 +226,54 @@ export async function GET(request: NextRequest) {
         new Date(a.latest_message_at).getTime()
     );
 
+    // Lookup contacts so we can show meaningful labels (name or phone).
+    const contactIdSet = new Set<string>();
+    for (const conv of conversations) {
+      if (conv.contact_id) contactIdSet.add(conv.contact_id);
+    }
+    const contactIds = Array.from(contactIdSet);
+
+    const contactLabelMap = new Map<
+      string,
+      { name: string | null; phone: string | null }
+    >();
+
+    if (contactIds.length > 0) {
+      const { data: contacts, error: contactsError } = await supabase
+        .from("contacts")
+        .select("id, name, phone")
+        .in("id", contactIds);
+
+      if (contactsError) {
+        console.error("[inbox] contacts lookup error:", contactsError.message);
+      } else {
+        for (const row of contacts ?? []) {
+          contactLabelMap.set(String(row.id), {
+            name: (row.name as string | null) ?? null,
+            phone: (row.phone as string | null) ?? null,
+          });
+        }
+      }
+    }
+
     let customerIndex = 1;
     for (const conv of conversations) {
-      if (conv.channel === "meta") {
+      const contactMeta =
+        (conv.contact_id && contactLabelMap.get(conv.contact_id)) || null;
+
+      const name = contactMeta?.name?.trim() || "";
+      const phone = contactMeta?.phone?.trim() || "";
+
+      if (name) {
+        conv.contact_label = name;
+      } else if (phone) {
+        conv.contact_label = phone;
+      } else if (conv.channel === "website_chat") {
+        conv.contact_label = "Website visitor";
+      } else if (conv.channel === "meta") {
         conv.contact_label = "Messenger user";
       } else if (conv.channel === "sms") {
         conv.contact_label = "SMS lead";
-      } else if (conv.channel === "website_chat") {
-        conv.contact_label = "Website visitor";
       } else if (conv.channel === "whatsapp") {
         conv.contact_label = "WhatsApp";
       } else {

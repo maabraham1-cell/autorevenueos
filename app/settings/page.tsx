@@ -292,7 +292,7 @@ function SettingsPageContent() {
             Settings
           </h1>
           <p className="mt-2 text-sm text-[#475569]">
-            Configure your business for recovered revenue tracking and auto-replies.
+            Configure your business for missed call recovery by SMS, optional messaging channels, and recovered revenue tracking.
           </p>
         </header>
 

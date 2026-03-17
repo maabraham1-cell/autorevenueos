@@ -18,6 +18,7 @@ type InboxMessage = {
 };
 
 type InboxConversation = {
+  conversation_id: string | null;
   contact_id: string | null;
   contact_label: string;
   channel: string | null;
@@ -30,7 +31,19 @@ type InboxConversation = {
   has_unread?: boolean;
 };
 
+type ContactDetails = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  channel: string | null;
+  status: string | null;
+  notes: string | null;
+  tags: string[] | null;
+  created_at: string;
+};
+
 function makeConversationKey(c: InboxConversation): string {
+  if (c.conversation_id) return `conv:${c.conversation_id}`;
   return `${c.contact_id ?? "unknown"}::${c.channel ?? "unknown"}`;
 }
 
@@ -64,6 +77,9 @@ function InboxContent() {
   const [replyDraft, setReplyDraft] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<ContactDetails | null>(null);
+  const [savingContact, setSavingContact] = useState(false);
+  const [contactSaveError, setContactSaveError] = useState<string | null>(null);
 
   const loadInbox = useCallback(async () => {
     try {
@@ -117,6 +133,34 @@ function InboxContent() {
       null
     );
   }, [conversations, selectedKey]);
+
+  // Load CRM contact details when the selected conversation changes.
+  useEffect(() => {
+    const contactId = selectedConversation?.contact_id;
+    if (!contactId) {
+      setSelectedContact(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/contacts/${encodeURIComponent(contactId)}`);
+        if (!res.ok) {
+          if (!cancelled) setSelectedContact(null);
+          return;
+        }
+        const data = (await res.json()) as ContactDetails;
+        if (!cancelled) {
+          setSelectedContact(data);
+        }
+      } catch {
+        if (!cancelled) setSelectedContact(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedConversation?.contact_id]);
 
   const filteredConversations = useMemo(() => {
     const list = conversations ?? [];
@@ -396,6 +440,166 @@ function InboxContent() {
                     </div>
                   </div>
 
+                  {/* Mini CRM panel */}
+                  {selectedContact && (
+                    <section className="mt-4 mb-3 grid gap-3 rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)] sm:gap-4">
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+                          Customer
+                        </h3>
+                        <div className="space-y-1 text-xs">
+                          <p className="text-[#0F172A]">
+                            <span className="font-semibold">Name:</span>{" "}
+                            {selectedContact.name?.trim() ||
+                              selectedConversation.contact_label ||
+                              "Unknown"}
+                          </p>
+                          <p className="text-[#0F172A]">
+                            <span className="font-semibold">Phone:</span>{" "}
+                            {selectedContact.phone || "Not set"}
+                          </p>
+                          <p className="text-[#0F172A]">
+                            <span className="font-semibold">Channel:</span>{" "}
+                            {selectedConversation.channel ?? "Unknown"}
+                          </p>
+                          <p className="text-[#0F172A]">
+                            <span className="font-semibold">First seen:</span>{" "}
+                            {formatDateTime(selectedContact.created_at)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <form
+                        className="space-y-2"
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!selectedContact) return;
+                          setSavingContact(true);
+                          setContactSaveError(null);
+                          try {
+                            const payload = {
+                              name: selectedContact.name ?? "",
+                              status: selectedContact.status ?? "",
+                              notes: selectedContact.notes ?? "",
+                              tags: (selectedContact.tags ?? []).filter(
+                                (t) => typeof t === "string" && t.trim().length > 0,
+                              ),
+                            };
+                            const res = await fetch(
+                              `/api/contacts/${encodeURIComponent(selectedContact.id)}`,
+                              {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(payload),
+                              },
+                            );
+                            if (!res.ok) {
+                              const data = (await res.json().catch(() => ({}))) as {
+                                error?: string;
+                              };
+                              throw new Error(data.error || "Failed to save contact");
+                            }
+                          } catch (err) {
+                            setContactSaveError(
+                              err instanceof Error ? err.message : "Failed to save contact",
+                            );
+                          } finally {
+                            setSavingContact(false);
+                          }
+                        }}
+                      >
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+                          Mini CRM
+                        </h3>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-medium text-[#64748B]">
+                              Name
+                            </label>
+                            <input
+                              type="text"
+                              value={selectedContact.name ?? ""}
+                              onChange={(e) =>
+                                setSelectedContact((prev) =>
+                                  prev ? { ...prev, name: e.target.value } : prev,
+                                )
+                              }
+                              className="w-full rounded-md border border-[#E5E7EB] px-2 py-1.5 text-xs text-[#0F172A] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-medium text-[#64748B]">
+                              Status
+                            </label>
+                            <select
+                              value={selectedContact.status ?? ""}
+                              onChange={(e) =>
+                                setSelectedContact((prev) =>
+                                  prev ? { ...prev, status: e.target.value || null } : prev,
+                                )
+                              }
+                              className="w-full rounded-md border border-[#E5E7EB] px-2 py-1.5 text-xs text-[#0F172A] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                            >
+                              <option value="">No status</option>
+                              <option value="new_lead">New lead</option>
+                              <option value="in_conversation">In conversation</option>
+                              <option value="waiting_for_customer">Waiting for customer</option>
+                              <option value="booking_requested">Booking requested</option>
+                              <option value="booked">Booked</option>
+                              <option value="lost">Lost</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-[#64748B]">
+                            Tags (comma-separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={(selectedContact.tags ?? []).join(", ")}
+                            onChange={(e) => {
+                              const raw = e.target.value.split(",");
+                              const cleaned = raw
+                                .map((t) => t.trim())
+                                .filter((t) => t.length > 0);
+                              setSelectedContact((prev) =>
+                                prev ? { ...prev, tags: cleaned } : prev,
+                              );
+                            }}
+                            placeholder="e.g. Hot lead, Returning client"
+                            className="w-full rounded-md border border-[#E5E7EB] px-2 py-1.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-medium text-[#64748B]">
+                            Notes
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={selectedContact.notes ?? ""}
+                            onChange={(e) =>
+                              setSelectedContact((prev) =>
+                                prev ? { ...prev, notes: e.target.value } : prev,
+                              )
+                            }
+                            placeholder='e.g. "Wants balayage next week", "Prefers mornings"'
+                            className="w-full rounded-md border border-[#E5E7EB] px-2 py-1.5 text-xs text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
+                          />
+                        </div>
+                        {contactSaveError && (
+                          <p className="text-[11px] text-red-600">{contactSaveError}</p>
+                        )}
+                        <button
+                          type="submit"
+                          disabled={savingContact}
+                          className="mt-1 inline-flex items-center rounded-md bg-[#0F172A] px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-[#111827] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {savingContact ? "Saving…" : "Save CRM details"}
+                        </button>
+                      </form>
+                    </section>
+                  )}
+
                   <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto rounded-2xl bg-[#F9FAFB] px-3 py-3 pr-1 sm:mt-5 sm:px-4 sm:py-4">
                     {selectedConversation.messages.map((msg) => {
                       const isOutbound = msg.direction === "outbound";
@@ -468,6 +672,12 @@ function InboxContent() {
                                   if (selectedConversation?.contact_id) {
                                     // Use contact_id as the canonical identifier for attribution.
                                     params.set("contactId", selectedConversation.contact_id);
+                                  }
+                                  if (selectedConversation?.conversation_id) {
+                                    params.set(
+                                      "conversationId",
+                                      selectedConversation.conversation_id,
+                                    );
                                   }
 
                                   const res = await fetch(

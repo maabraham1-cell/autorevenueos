@@ -115,8 +115,9 @@ type BuildBookingLinkParams = {
    */
   contactId?: string | null;
   /**
-   * Deprecated alias for contactId; kept for backwards compatibility in code
-   * and in existing URLs that already contain conversationId.
+   * Optional conversation/thread identifier when known.
+   * Legacy behaviour used this as an alias for contactId; we now treat it as
+   * a real conversation id but still accept old values where it equals a contact id.
    */
   conversationId?: string | null;
   missedCallId?: string | null;
@@ -126,7 +127,9 @@ type BuildBookingLinkParams = {
  * Attach attribution params for WhatsApp-driven bookings.
  * - source=whatsapp
  * - contactId=<contact uuid> (canonical identifier for the person)
- * - conversationId=<legacy alias> is still included for backwards compatibility
+ * - conversationId=<conversation uuid> when known (thread id)
+ *   - for backwards compatibility, if only conversationId is provided and it
+ *     equals an old contact id, we still treat it as the contact identifier.
  * - missedCallId=<event uuid> (when recovery was triggered by a missed call)
  */
 export function buildWhatsAppBookingLink(params: BuildBookingLinkParams): string | null {
@@ -134,7 +137,7 @@ export function buildWhatsAppBookingLink(params: BuildBookingLinkParams): string
     bookingLink,
     source = "whatsapp",
     contactId,
-    conversationId: legacyConversationId,
+    conversationId,
     missedCallId,
   } = params;
   if (!bookingLink) return null;
@@ -149,12 +152,12 @@ export function buildWhatsAppBookingLink(params: BuildBookingLinkParams): string
 
   url.searchParams.set("source", source);
 
-  const effectiveContactId = contactId || legacyConversationId || null;
+  const effectiveContactId = contactId || conversationId || null;
   if (effectiveContactId) {
-    // Canonical param
     url.searchParams.set("contactId", effectiveContactId);
-    // Backwards compatibility for any downstream readers expecting conversationId
-    url.searchParams.set("conversationId", effectiveContactId);
+  }
+  if (conversationId) {
+    url.searchParams.set("conversationId", conversationId);
   }
   if (missedCallId) {
     url.searchParams.set("missedCallId", missedCallId);

@@ -40,11 +40,11 @@ export default function MarketingPage() {
               AutoRevenueOS
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
-              Stop losing revenue to missed calls.
+              Turn missed calls into booked customers automatically.
             </h1>
             <p className="mt-4 text-base text-slate-300 sm:text-lg">
-              AutoRevenueOS detects every missed call, sends an instant SMS or WhatsApp with a
-              tracked recovery link, and turns more of those moments into recovered booking leads — automatically.
+              Most customers won&apos;t call twice. AutoRevenueOS replies instantly with your booking link so
+              you recover the booking before they go elsewhere.
             </p>
             <div className="mt-6 flex flex-wrap gap-3 text-xs">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-slate-200 ring-1 ring-white/20">
@@ -53,7 +53,7 @@ export default function MarketingPage() {
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-slate-200 ring-1 ring-white/20">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
-                Instant SMS / WhatsApp with recovery link
+                Instant SMS with recovery link
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-slate-200 ring-1 ring-white/20">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#60A5FA]" />
@@ -66,7 +66,7 @@ export default function MarketingPage() {
                 onClick={scrollToRevenueCheck}
                 className="inline-flex items-center justify-center rounded-xl bg-[#2563EB] px-6 py-3 text-sm font-semibold text-white shadow-[0_0_40px_-8px_rgba(59,130,246,0.6)] transition-all hover:bg-[#3B82F6] hover:shadow-[0_0_48px_-6px_rgba(59,130,246,0.7)]"
               >
-                See my potential recovered revenue
+                See how many bookings you&apos;re losing
               </Link>
               <Link
                 href="/signup"
@@ -76,8 +76,7 @@ export default function MarketingPage() {
               </Link>
             </div>
             <p className="mt-4 text-xs text-slate-400">
-              Free to install. Only £3 per recovered booking lead. Built for UK salons, clinics,
-              trades and professional services.
+              Free to install. Only £3 per confirmed booking. Messages and leads are never billed.
             </p>
           </div>
 
@@ -131,8 +130,7 @@ export default function MarketingPage() {
                 <p className="font-semibold text-[#0F172A]">This is what your customer sees.</p>
                 <p className="mt-1">
                   When a call is missed, AutoRevenueOS springs into action automatically. Your
-                  customer receives a friendly, personalised text within seconds and is guided
-                  seamlessly toward booking.
+                  customer receives a friendly text within seconds and is guided straight to your booking link.
                 </p>
               </div>
             </motion.div>
@@ -161,8 +159,8 @@ export default function MarketingPage() {
               How much revenue are missed calls costing you every month?
             </h2>
             <p className="mt-3 text-sm text-slate-300 sm:text-base">
-              Use this calculator to estimate lost revenue from missed calls and see how much
-              AutoRevenueOS could automatically recover for your business.
+              Use this calculator to estimate how many bookings you&apos;re losing to missed calls – and how
+              much revenue AutoRevenueOS could help you recover.
             </p>
           </div>
           <div className="mt-10 max-w-3xl">
@@ -191,11 +189,11 @@ export default function MarketingPage() {
               How it works
             </p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-              From missed call to recovered booking lead in three steps.
+              Turn missed calls into booked customers in three steps.
             </h2>
             <p className="mt-3 text-sm text-slate-300 sm:text-base">
-              AutoRevenueOS runs in the background, watching for missed calls, sending a reply with
-              a tracked recovery link, and nudging customers to re-engage while they&apos;re still warm.
+              AutoRevenueOS runs in the background, watching for missed calls, sending a reply with your
+              booking link, and nudging customers to book before they move on.
             </p>
           </div>
 
@@ -212,11 +210,10 @@ export default function MarketingPage() {
                 Detect
               </p>
               <p className="mt-2 text-sm font-semibold text-[#0F172A]">
-                Instantly spot every missed call.
+                You miss the call. We catch the customer.
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                AutoRevenueOS listens to your phone line and logs every missed call so no potential
-                customer quietly disappears.
+                AutoRevenueOS instantly detects missed calls so no opportunity slips through unnoticed.
               </p>
             </motion.div>
             <motion.div
@@ -231,11 +228,10 @@ export default function MarketingPage() {
                 Respond
               </p>
               <p className="mt-2 text-sm font-semibold text-[#0F172A]">
-                Send an automatic message in seconds.
+                Instant reply. No delay.
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                Customers receive a friendly SMS or WhatsApp while they&apos;re still ready to
-                engage, with a tracked recovery link so we can attribute recovered booking leads.
+                The moment you miss a call, we automatically send a message with your booking link. No chasing. No manual follow-up.
               </p>
             </motion.div>
             <motion.div
@@ -250,11 +246,10 @@ export default function MarketingPage() {
                 Convert
               </p>
               <p className="mt-2 text-sm font-semibold text-[#0F172A]">
-                Turn missed calls into booked revenue.
+                Turn missed calls into real bookings.
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                The system guides customers to book or continue the conversation — you only pay when
-                real revenue is generated.
+                Customers click your link, request a booking, and you recover revenue you would have lost.
               </p>
             </motion.div>
           </div>
@@ -275,9 +270,9 @@ export default function MarketingPage() {
               Works with your current booking system — or without one.
             </h2>
             <p className="mt-3 text-sm text-[#475569] sm:text-base">
-              AutoRevenueOS works whether you take bookings by phone, WhatsApp, Instagram, or a
-              scheduling tool. If you don&apos;t have a booking system yet, we can provide a simple
-              booking page that converts.
+              AutoRevenueOS starts with missed-call recovery by SMS. You can then optionally connect WhatsApp,
+              Facebook Messenger, Instagram DMs and website chat so all enquiries share the same booking-link
+              and booking-request flow.
             </p>
           </div>
 
@@ -287,10 +282,10 @@ export default function MarketingPage() {
                 Channels
               </p>
               <p className="mt-2 text-sm font-medium text-[#0F172A]">
-                Salons · Clinics · Trades · Professional services
+                Missed call recovery by SMS
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                Even if you only take bookings by phone today.
+                Core product. We detect missed calls and send your booking link automatically.
               </p>
             </div>
             <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_8px_24px_-8px_rgba(30,58,138,0.12)]">
@@ -298,10 +293,10 @@ export default function MarketingPage() {
                 Messaging
               </p>
               <p className="mt-2 text-sm font-medium text-[#0F172A]">
-                Connects with WhatsApp &amp; Instagram DMs
+                Optional: connect WhatsApp &amp; Instagram DMs
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                Keep customers in the channels they already use every day.
+                Meet customers where they already are. All paths still lead to your booking link.
               </p>
             </div>
             <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_8px_24px_-8px_rgba(30,58,138,0.12)]">
@@ -312,7 +307,7 @@ export default function MarketingPage() {
                 Works with your existing tools
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                Calendly, WhatsApp, Fresha and more — without changing your current workflow.
+                Calendly, Fresha, Timely, Square and more — so confirmed bookings still land where you expect.
               </p>
             </div>
           </div>
@@ -365,7 +360,7 @@ export default function MarketingPage() {
             <p className="text-[#93C5FD]">Response speed</p>
             <p className="mt-2 text-xl font-semibold text-white">&lt;30 seconds</p>
             <p className="mt-2 text-[11px] text-slate-400">
-              Auto replies fire while the customer is still holding their phone, not hours later.
+              Replies go out while the customer is still holding their phone, not hours later.
             </p>
           </div>
           <div className="hidden h-12 w-px bg-[#1E3A8A]/30 sm:block" />

@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { supabase as anonSupabase } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/phone";
+import { findOrCreateConversation, touchConversation } from "@/lib/conversations";
 
 const WHATSAPP_CHANNEL = "whatsapp";
 const LOG_PREFIX = "[whatsapp-webhook]";
@@ -153,6 +154,12 @@ async function processWhatsAppChange(
   const msgId = (waMessage.id ?? "").toString().trim();
   const textBody =
     typeof waMessage.text?.body === "string" ? (waMessage.text.body as string) : "";
+
+  const contactsArr = Array.isArray((value as any).contacts)
+    ? ((value as any).contacts as any[])
+    : [];
+  const profileNameRaw =
+    (contactsArr[0]?.profile?.name && String(contactsArr[0].profile.name).trim()) || "";
 
   console.log(`${LOG_PREFIX} extracted`, {
     requestId,
@@ -314,11 +321,11 @@ async function processWhatsAppChange(
   }
 
   // --- Find or create contact ---
-  let contact: { id: string } | null = null;
+  let contact: { id: string; name?: string | null } | null = null;
 
   const { data: existingByExternalId, error: errByExt } = await supabase
     .from("contacts")
-    .select("id")
+    .select("id, name")
     .eq("business_id", business.id)
     .eq("channel", WHATSAPP_CHANNEL)
     .eq("external_id", from)
@@ -340,7 +347,7 @@ async function processWhatsAppChange(
   if (!contact) {
     const { data: existingByPhone, error: errByPhone } = await supabase
       .from("contacts")
-      .select("id")
+      .select("id, name")
       .eq("business_id", business.id)
       .eq("phone", from)
       .maybeSingle();
@@ -361,9 +368,9 @@ async function processWhatsAppChange(
         channel: WHATSAPP_CHANNEL,
         external_id: from,
         phone: from,
-        name: null,
+        name: profileNameRaw || null,
       })
-      .select("id")
+      .select("id, name")
       .single();
 
     if (insertContactError) {
@@ -379,6 +386,40 @@ async function processWhatsAppChange(
     contact = inserted;
     console.log(`${LOG_PREFIX} contact created`, { requestId, contactId: contact.id });
   }
+
+  // If we have a WhatsApp profile name and the contact has no name yet, set it (one-way).
+  if (profileNameRaw && (!contact.name || String(contact.name).trim().length === 0)) {
+    const { error: nameUpdateError } = await supabase
+      .from("contacts")
+      .update({ name: profileNameRaw })
+      .eq("id", contact.id);
+    if (nameUpdateError) {
+      console.error(`${LOG_PREFIX} contact name update failed`, {
+        requestId,
+        contactId: contact.id,
+        error: nameUpdateError,
+      });
+    } else {
+      contact.name = profileNameRaw;
+      console.log(`${LOG_PREFIX} contact name set from WhatsApp profile`, {
+        requestId,
+        contactId: contact.id,
+      });
+    }
+  }
+
+  // --- Conversation: find or create thread for this contact/channel ---
+  const conversation = await findOrCreateConversation({
+    supabase,
+    businessId: business.id as string,
+    contactId: contact.id as string,
+    channel: WHATSAPP_CHANNEL,
+    source: "whatsapp_inbound",
+    initialMessageAt: new Date().toISOString(),
+    initialPreview: textBody || null,
+  });
+
+  const conversationId = (conversation && (conversation as any).id) as string | undefined;
 
   // --- Event insert ---
   const { data: evt, error: eventError } = await supabase
@@ -416,6 +457,7 @@ async function processWhatsAppChange(
       direction: "inbound",
       body: textBody || null,
       external_id: msgId || null,
+      conversation_id: conversationId ?? null,
     })
     .select("id, body, created_at")
     .single();
@@ -438,4 +480,13 @@ async function processWhatsAppChange(
     contactId: contact.id,
     channel: WHATSAPP_CHANNEL,
   });
+
+  if (conversationId) {
+    await touchConversation({
+      supabase,
+      conversationId,
+      lastMessageAt: insertedMessage.created_at as string,
+      lastMessagePreview: textBody || null,
+    });
+  }
 }

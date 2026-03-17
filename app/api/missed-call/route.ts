@@ -5,6 +5,7 @@ import { verifyTwilioRequest } from "@/lib/twilioWebhook";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { normalizePhone } from "@/lib/phone";
 import { buildWhatsAppBookingLink, sendWhatsAppTextMessage } from "@/lib/whatsapp";
+import { findOrCreateConversation, touchConversation } from "@/lib/conversations";
 
 const SMS_CHANNEL = "sms";
 
@@ -239,6 +240,22 @@ export async function POST(request: Request) {
       );
     }
 
+    // Ensure there is a conversation for this SMS thread (phone channel)
+    const smsConversation = await findOrCreateConversation({
+      supabase,
+      businessId: business.id as string,
+      contactId: contact.id as string,
+      channel: SMS_CHANNEL,
+      source: "missed_call_recovery",
+      missedCallEventId: event.id as string,
+      initialMessageAt: new Date().toISOString(),
+      initialPreview: null,
+    });
+
+    const smsConversationId = (smsConversation && (smsConversation as any).id) as
+      | string
+      | undefined;
+
     const { data: message, error: messageError } = await supabase
       .from("messages")
       .insert({
@@ -247,6 +264,7 @@ export async function POST(request: Request) {
         channel: "sms",
         direction: "outbound",
         body: null, // updated after Twilio send
+        conversation_id: smsConversationId ?? null,
       })
       .select()
       .single();
@@ -302,6 +320,7 @@ export async function POST(request: Request) {
         const waBookingLink = buildWhatsAppBookingLink({
           bookingLink: bookingLinkRaw,
           source: "whatsapp",
+          contactId: contact.id as string,
           missedCallId: event.id as string,
         });
 
@@ -325,18 +344,43 @@ export async function POST(request: Request) {
           });
 
           // Log the outbound WhatsApp message so it shows in the inbox thread.
+          // Ensure there is a WhatsApp conversation for this contact as well.
+          const waConversation = await findOrCreateConversation({
+            supabase,
+            businessId: business.id as string,
+            contactId: contact.id as string,
+            channel: "whatsapp",
+            source: "missed_call_recovery",
+            missedCallEventId: event.id as string,
+            initialMessageAt: new Date().toISOString(),
+            initialPreview: text,
+          });
+
+          const waConversationId = (waConversation && (waConversation as any).id) as
+            | string
+            | undefined;
+
           const { error: waMessageError } = await supabase.from("messages").insert({
             business_id: business.id,
             contact_id: contact.id,
             channel: "whatsapp",
             direction: "outbound",
             body: text,
+            conversation_id: waConversationId ?? null,
           });
 
           if (waMessageError) {
             console.error("[missed-call] WhatsApp message insert error:", {
               requestId,
               error: waMessageError.message,
+            });
+          }
+          if (waConversationId) {
+            await touchConversation({
+              supabase,
+              conversationId: waConversationId,
+              lastMessageAt: new Date().toISOString(),
+              lastMessagePreview: text,
             });
           }
         }

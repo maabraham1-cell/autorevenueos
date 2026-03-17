@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import { normalizePhone } from "@/lib/phone";
+import { findOrCreateConversation, touchConversation } from "@/lib/conversations";
 
 const CHANNEL = "whatsapp";
 const LOG_PREFIX = "[inbox/whatsapp/send]";
@@ -115,6 +116,28 @@ export async function POST(request: NextRequest) {
   }
 
   // Store outbound message so it appears immediately in the inbox thread.
+  // Attach to an existing open conversation if possible.
+  const convClient = supabase;
+  let conversationId: string | null = null;
+  try {
+    const conv = await findOrCreateConversation({
+      supabase: convClient as any,
+      businessId: business.id as string,
+      contactId: contact.id as string,
+      channel: CHANNEL,
+      source: "whatsapp_outbound_inbox_reply",
+      initialMessageAt: new Date().toISOString(),
+      initialPreview: text,
+    });
+    conversationId = (conv && (conv as any).id) ?? null;
+  } catch (e) {
+    console.error(LOG_PREFIX + " conversation find/create error", {
+      business_id: business.id,
+      contact_id: contact.id,
+      error: e,
+    });
+  }
+
   const { data: inserted, error: insertError } = await supabase
     .from("messages")
     .insert({
@@ -124,6 +147,7 @@ export async function POST(request: NextRequest) {
       direction: "outbound",
       body: text,
       status: "sent",
+      conversation_id: conversationId,
     })
     .select("id, body, created_at")
     .single();
@@ -136,6 +160,15 @@ export async function POST(request: NextRequest) {
       { error: "WhatsApp message sent but failed to log in inbox" },
       { status: 200 },
     );
+  }
+
+  if (conversationId) {
+    await touchConversation({
+      supabase: convClient as any,
+      conversationId,
+      lastMessageAt: inserted.created_at as string,
+      lastMessagePreview: text,
+    });
   }
 
   return NextResponse.json({
