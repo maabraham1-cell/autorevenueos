@@ -5,12 +5,35 @@ import { BookingConfirmForm } from "./BookingConfirmForm";
 
 type Props = {
   params: Promise<{ businessId: string }>;
-  searchParams: Promise<{ contact_id?: string; recovery_id?: string }>;
+  searchParams: Promise<{
+    // Canonical attribution identifier from booking links.
+    contactId?: string;
+    // Legacy alias used in older links; treated as a fallback to contactId.
+    conversationId?: string;
+    // Older flows (email/webhooks) that already pass contact_id / recovery_id.
+    contact_id?: string;
+    recovery_id?: string;
+  }>;
 };
 
 export default async function BookPage({ params, searchParams }: Props) {
   const { businessId } = await params;
-  const { contact_id: contactId, recovery_id: recoveryId } = await searchParams;
+  const {
+    contactId,
+    conversationId,
+    contact_id: legacyContactId,
+    recovery_id: recoveryId,
+  } = await searchParams;
+
+  // Canonical contact identifier for attribution:
+  // 1) contactId (new booking links)
+  // 2) conversationId (legacy alias, treated as contact id)
+  // 3) contact_id (old query param used by existing email/webhook flows)
+  const effectiveContactId =
+    (contactId && contactId.trim()) ||
+    (conversationId && conversationId.trim()) ||
+    (legacyContactId && legacyContactId.trim()) ||
+    null;
 
   const db = getSupabaseAdmin();
   if (!db) notFound();
@@ -25,7 +48,7 @@ export default async function BookPage({ params, searchParams }: Props) {
 
   const token = createBookingConfirmToken({
     business_id: business.id,
-    contact_id: contactId?.trim() || null,
+    contact_id: effectiveContactId,
     recovery_id: recoveryId?.trim() || null,
   });
 

@@ -88,13 +88,15 @@ export async function POST(request: NextRequest) {
 
   const phoneNumberId = (business as any).whatsapp_phone_number_id ?? (business as any).meta_page_id;
   const sourceOfTo = contactExternalId.trim() ? "contact.external_id" : "contact.phone";
+  const usingEnvPhoneNumberIdFallback = !phoneNumberId && !!process.env.META_WHATSAPP_PHONE_NUMBER_ID;
 
   console.log(LOG_PREFIX + " sending", {
     business_id: business.id,
     contact_id: contact.id,
     to_digits_prefix: toDigits.slice(0, 6) + "…",
     source: sourceOfTo,
-    phone_number_id: phoneNumberId ?? "(env fallback)",
+    phone_number_id: phoneNumberId ?? "(env fallback from META_WHATSAPP_PHONE_NUMBER_ID)",
+    is_env_phone_id_fallback: usingEnvPhoneNumberIdFallback,
   });
 
   try {

@@ -287,6 +287,8 @@ async function processWhatsAppChange(
     businessId: business.id,
     businessName: (business as any).name,
     businessMatchReason,
+    phone_number_id: phoneNumberId,
+    display_phone_number: displayPhoneRaw,
   });
 
   // Idempotency: do not store the same WhatsApp message twice

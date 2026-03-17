@@ -34,12 +34,13 @@ export async function sendWhatsAppTextMessage(params: SendWhatsAppTextParams): P
   const toRaw = typeof params.to === "string" ? params.to.trim() : "";
   const to = toWhatsAppRecipient(toRaw);
 
-  const phoneNumberId =
-    (params.phoneNumberId && params.phoneNumberId.trim()) ||
-    process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+  const phoneNumberIdFromParams = params.phoneNumberId && params.phoneNumberId.trim();
+  const phoneNumberIdFromEnv = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+  const phoneNumberId = phoneNumberIdFromParams || phoneNumberIdFromEnv;
 
-  const accessToken =
-    (params.accessToken && params.accessToken.trim()) || process.env.META_PAGE_ACCESS_TOKEN;
+  const accessTokenFromParams = params.accessToken && params.accessToken.trim();
+  const accessTokenFromEnv = process.env.META_PAGE_ACCESS_TOKEN;
+  const accessToken = accessTokenFromParams || accessTokenFromEnv;
 
   if (!phoneNumberId) {
     throw new Error(
@@ -52,6 +53,23 @@ export async function sendWhatsAppTextMessage(params: SendWhatsAppTextParams): P
       "No Meta access token configured. Connect WhatsApp/Facebook in Settings or set META_PAGE_ACCESS_TOKEN."
     );
   }
+
+  // Explicit logging so we can distinguish test-number vs per-business flows.
+  // NOTE: this does not log any secrets.
+  const toDigitsPrefix = to.slice(0, 6) + "…";
+  const isEnvPhoneIdFallback = !phoneNumberIdFromParams && !!phoneNumberIdFromEnv;
+  const isEnvAccessTokenFallback = !accessTokenFromParams && !!accessTokenFromEnv;
+
+  console.log("[whatsapp/send] sending text message", {
+    to_digits_prefix: toDigitsPrefix,
+    phone_number_id_source: phoneNumberIdFromParams ? "business.phone_number_id" : "env.META_WHATSAPP_PHONE_NUMBER_ID",
+    access_token_source: accessTokenFromParams ? "business.meta_page_access_token" : "env.META_PAGE_ACCESS_TOKEN",
+    is_env_phone_id_fallback: isEnvPhoneIdFallback,
+    is_env_access_token_fallback: isEnvAccessTokenFallback,
+    // Heuristic: when we rely entirely on env-level credentials, we are most likely
+    // in shared/test-number mode rather than a fully connected production WhatsApp number.
+    is_likely_test_number_flow: isEnvPhoneIdFallback || isEnvAccessTokenFallback,
+  });
 
   const url = `${WHATSAPP_API_BASE}/${encodeURIComponent(
     phoneNumberId
@@ -91,6 +109,15 @@ export async function sendWhatsAppTextMessage(params: SendWhatsAppTextParams): P
 type BuildBookingLinkParams = {
   bookingLink: string | null | undefined;
   source?: string;
+  /**
+   * Canonical identifier for attribution. This is currently the contact_id
+   * from the inbox, but may later point at a real conversation/thread id.
+   */
+  contactId?: string | null;
+  /**
+   * Deprecated alias for contactId; kept for backwards compatibility in code
+   * and in existing URLs that already contain conversationId.
+   */
   conversationId?: string | null;
   missedCallId?: string | null;
 };
@@ -98,11 +125,18 @@ type BuildBookingLinkParams = {
 /**
  * Attach attribution params for WhatsApp-driven bookings.
  * - source=whatsapp
- * - conversationId=<conversation uuid> (when known)
+ * - contactId=<contact uuid> (canonical identifier for the person)
+ * - conversationId=<legacy alias> is still included for backwards compatibility
  * - missedCallId=<event uuid> (when recovery was triggered by a missed call)
  */
 export function buildWhatsAppBookingLink(params: BuildBookingLinkParams): string | null {
-  const { bookingLink, source = "whatsapp", conversationId, missedCallId } = params;
+  const {
+    bookingLink,
+    source = "whatsapp",
+    contactId,
+    conversationId: legacyConversationId,
+    missedCallId,
+  } = params;
   if (!bookingLink) return null;
 
   let url: URL;
@@ -114,8 +148,13 @@ export function buildWhatsAppBookingLink(params: BuildBookingLinkParams): string
   }
 
   url.searchParams.set("source", source);
-  if (conversationId) {
-    url.searchParams.set("conversationId", conversationId);
+
+  const effectiveContactId = contactId || legacyConversationId || null;
+  if (effectiveContactId) {
+    // Canonical param
+    url.searchParams.set("contactId", effectiveContactId);
+    // Backwards compatibility for any downstream readers expecting conversationId
+    url.searchParams.set("conversationId", effectiveContactId);
   }
   if (missedCallId) {
     url.searchParams.set("missedCallId", missedCallId);

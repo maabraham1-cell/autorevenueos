@@ -400,7 +400,7 @@ function InboxContent() {
                     {selectedConversation.messages.map((msg) => {
                       const isOutbound = msg.direction === "outbound";
                       const bubbleBase =
-                        "inline-block max-w-[75%] rounded-2xl border px-3.5 py-2.5 text-sm shadow-sm";
+                        "inline-block max-w-[75%] rounded-2xl border px-3.5 py-2.5 text-sm shadow-sm text-center";
                       const bubbleColors = isOutbound
                         ? "bg-[#0F172A] text-white border-[#1F2937]"
                         : "bg-[#EFF6FF] text-[#0F172A] border-[#DBEAFE]";
@@ -420,7 +420,7 @@ function InboxContent() {
                                 ? "You"
                                 : selectedConversation.contact_label || "Customer"}
                             </p>
-                            <div className={bubbleBase + " " + bubbleColors + (isOutbound ? " text-center" : "")}>
+                            <div className={bubbleBase + " " + bubbleColors}>
                               <p className="whitespace-pre-wrap">
                                 {msg.body ||
                                   (isOutbound
@@ -446,7 +446,7 @@ function InboxContent() {
                         <p className="mb-2 text-xs text-red-600">{replyError}</p>
                       )}
                       <div className="flex gap-2">
-                        <textarea
+                          <textarea
                           rows={2}
                           value={replyDraft}
                           onChange={(e) => setReplyDraft(e.target.value)}
@@ -464,22 +464,26 @@ function InboxContent() {
                               type="button"
                               onClick={async () => {
                                 try {
-                                  const res = await fetch("/api/settings");
+                                  const params = new URLSearchParams();
+                                  if (selectedConversation?.contact_id) {
+                                    // Use contact_id as the canonical identifier for attribution.
+                                    params.set("contactId", selectedConversation.contact_id);
+                                  }
+
+                                  const res = await fetch(
+                                    `/api/inbox/whatsapp/booking-link?${params.toString()}`,
+                                  );
                                   if (!res.ok) return;
                                   const data = (await res.json()) as {
                                     booking_link?: string;
-                                    id: string;
                                   };
-                                  const baseLink = (data.booking_link as string | undefined) ?? "";
+                                  const baseLink =
+                                    (data.booking_link as string | undefined) ?? "";
                                   if (!baseLink) return;
-                                  // For now we just append source=whatsapp; missedCallId / conversationId
-                                  // are added on the server when sending from automations.
-                                  const url = new URL(baseLink, baseLink.startsWith("http") ? undefined : "https://example.com");
-                                  url.searchParams.set("source", "whatsapp");
                                   setReplyDraft((prev) =>
                                     prev
-                                      ? `${prev} ${url.toString()}`
-                                      : url.toString(),
+                                      ? `${prev} ${baseLink}`
+                                      : baseLink,
                                   );
                                 } catch {
                                   // silently ignore; keep UX simple
