@@ -15,8 +15,20 @@ export default function AdminPage() {
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
+              href="/admin/customers"
+              className="inline-flex items-center justify-center rounded-lg bg-[#0F172A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1e293b]"
+            >
+              View customers
+            </Link>
+            <a
+              href="/api/admin/twilio-pool"
+              className="inline-flex items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F172A] shadow-sm transition-colors hover:bg-[#F8FAFC]"
+            >
+              Twilio pool (JSON)
+            </a>
+            <Link
               href="/dashboard"
-              className="inline-flex items-center justify-center rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#2563EB]"
+              className="inline-flex items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F172A] shadow-sm transition-colors hover:bg-[#F8FAFC]"
             >
               Back to dashboard
             </Link>

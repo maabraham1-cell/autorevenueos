@@ -5,9 +5,34 @@
  */
 export function ChannelBadge({ channel }: { channel: string | null }) {
   const label =
-    channel === 'website_chat' ? 'Website' : channel ?? 'Unknown';
+    channel === "website_chat"
+      ? "Website"
+      : channel === "whatsapp"
+        ? "WhatsApp"
+        : channel === "messenger"
+          ? "Messenger"
+          : channel === "instagram"
+            ? "Instagram"
+            : channel === "meta"
+              ? "Messenger"
+              : channel ?? "Unknown";
+
   const initial =
-    channel === 'meta' ? 'M' : channel === 'sms' ? 'S' : channel === 'website_chat' ? 'W' : channel === 'email' ? 'E' : 'C';
+    channel === "meta"
+      ? "M"
+      : channel === "messenger"
+        ? "M"
+        : channel === "instagram"
+          ? "I"
+          : channel === "sms"
+            ? "S"
+            : channel === "website_chat"
+              ? "W"
+              : channel === "whatsapp"
+                ? "W"
+                : channel === "email"
+                  ? "E"
+                  : "C";
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-[#64748B]">

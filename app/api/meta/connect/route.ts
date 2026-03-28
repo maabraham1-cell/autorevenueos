@@ -29,7 +29,12 @@ export async function GET(request: NextRequest) {
     const redirectUri = `${baseUrl}/api/meta/callback`;
     const state = signMetaState({ businessId: business.id, nonce: crypto.randomUUID() });
     const scope = "pages_show_list,pages_messaging";
-    const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(appId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`;
+    const url =
+      `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(appId)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&scope=${encodeURIComponent(scope)}` +
+      `&state=${encodeURIComponent(state)}` +
+      `&response_type=code`;
     return NextResponse.redirect(url);
   } catch (e) {
     console.error("[meta/connect] error:", e);

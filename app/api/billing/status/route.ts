@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       activation_status: status.activation_status,
       has_payment_method: status.has_payment_method,
+      billing_status: status.billing_status,
+      phone_recovery_status: status.phone_recovery_status,
       stripe_customer_id: status.stripe_customer_id ?? undefined,
     });
   } catch (e) {

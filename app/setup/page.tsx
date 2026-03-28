@@ -10,6 +10,8 @@ type SetupData = {
   id: string;
   name: string;
   activation_status: string;
+  billing_status?: string;
+  phone_recovery_status?: string;
   twilio_phone_number?: string;
   twilio_provisioning_error?: string;
 };
@@ -68,6 +70,8 @@ export default function SetupPage() {
         id: json.id,
         name: json.name ?? '',
         activation_status: json.activation_status ?? 'payment_required',
+        billing_status: json.billing_status ?? 'pending',
+        phone_recovery_status: json.phone_recovery_status ?? 'none',
         twilio_phone_number: json.twilio_phone_number ?? '',
         twilio_provisioning_error: json.twilio_provisioning_error ?? '',
       });
@@ -102,33 +106,33 @@ export default function SetupPage() {
     };
   }, [data?.id]);
 
-  const isActive = data?.activation_status === 'active';
+  const isFullyActive = data?.activation_status === 'active';
+  const billingReady = (data?.billing_status ?? 'pending') === 'ready';
   const hasRecoveryNumber = Boolean((data?.twilio_phone_number ?? '').trim());
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   useEffect(() => {
     if (!data) return;
-    if (!isActive) {
+    if (!billingReady) {
       setStep(1);
     } else if (!hasRecoveryNumber) {
-      // Billing done → focus on phone recovery first
       setStep(2);
     } else {
       setStep(3);
     }
-  }, [data, isActive, hasRecoveryNumber]);
+  }, [data, billingReady, hasRecoveryNumber]);
 
   const goToStep = (target: 1 | 2 | 3) => {
     if (target === 1) {
       setStep(1);
       return;
     }
-    if (target === 2 && isActive) {
+    if (target === 2 && billingReady) {
       setStep(2);
       return;
     }
-    if (target === 3 && isActive && hasRecoveryNumber) {
+    if (target === 3 && isFullyActive && hasRecoveryNumber) {
       setStep(3);
     }
   };
@@ -181,7 +185,7 @@ export default function SetupPage() {
         <div className="border-b border-[#E5E7EB] px-6 py-4">
           <h1 className="text-xl font-bold text-[#0F172A]">Set up AutoRevenueOS</h1>
           <p className="mt-1 text-sm text-[#64748B]">
-            Follow these steps to activate billing, turn on missed call recovery, and connect your booking system.
+            Follow these steps to activate billing, turn on missed-call recovery, and connect your scheduling system.
           </p>
           <div className="mt-4 flex flex-col gap-2 text-xs sm:text-sm">
             <div className="flex items-center gap-2">
@@ -204,11 +208,11 @@ export default function SetupPage() {
                 className={`flex-1 rounded-full px-3 py-1.5 text-left ${
                   step === 2
                     ? 'bg-[#1E3A8A] text-white'
-                    : isActive
+                    : billingReady
                       ? 'bg-[#EEF2FF] text-[#1E293B] hover:bg-[#E0E7FF]'
                       : 'bg-[#F8FAFC] text-[#94A3B8] cursor-not-allowed'
                 }`}
-                disabled={!isActive}
+                disabled={!billingReady}
               >
                 <span className="font-semibold">Step 2</span> — Phone
               </button>
@@ -220,13 +224,13 @@ export default function SetupPage() {
                 className={`flex-1 rounded-full px-3 py-1.5 text-left ${
                   step === 3
                     ? 'bg-[#1E3A8A] text-white'
-                    : isActive && hasRecoveryNumber
+                    : isFullyActive && hasRecoveryNumber
                       ? 'bg-[#EEF2FF] text-[#1E293B] hover:bg-[#E0E7FF]'
                       : 'bg-[#F8FAFC] text-[#94A3B8] cursor-not-allowed'
                 }`}
-                disabled={!isActive || !hasRecoveryNumber}
+                disabled={!isFullyActive || !hasRecoveryNumber}
               >
-                <span className="font-semibold">Step 3</span> — Booking
+                <span className="font-semibold">Step 3</span> — Scheduling
               </button>
             </div>
           </div>
@@ -238,9 +242,9 @@ export default function SetupPage() {
             <section className="rounded-lg border border-[#E5E7EB] bg-[#FAFAFA]/50 p-5">
               <h2 className="text-sm font-bold text-[#0F172A]">Activate your account</h2>
               <p className="mt-2 text-sm text-[#475569]">
-                Add your card to activate AutoRevenueOS.
-                You are only charged £3 when a <strong>confirmed booking</strong> is received from your booking system.
-                Messages, leads and enquiries never trigger charges.
+                Add your card, then we automatically provision your phone recovery number. Activation completes when both succeed.
+                You are only charged £3 when a <strong>confirmed appointment</strong> is received from your scheduling system.
+                Messages and enquiries never trigger charges.
               </p>
               {billingError && (
                 <p className="mt-3 text-sm text-red-600" role="alert">{billingError}</p>
@@ -277,7 +281,7 @@ export default function SetupPage() {
                     returnPath="/setup"
                     onSuccess={() => {
                       setBillingSecret(null);
-                      load();
+                      void load();
                     }}
                     onCancel={() => setBillingSecret(null)}
                   />
@@ -291,7 +295,7 @@ export default function SetupPage() {
             <section className="rounded-lg border border-[#E5E7EB] bg-[#FAFAFA]/50 p-5">
               <h2 className="text-sm font-bold text-[#0F172A]">Turn on missed call recovery</h2>
               <p className="mt-2 text-sm text-[#475569]">
-                Forward missed calls from your business phone and AutoRevenueOS will automatically text customers with a link to book.
+                Forward missed calls from your clinic or practice phone and AutoRevenueOS will automatically text callers with a secure link to request an appointment.
               </p>
               {provisionError && (
                 <p className="mt-3 text-sm text-red-600" role="alert">{provisionError}</p>
@@ -334,7 +338,7 @@ export default function SetupPage() {
                 <div className="mt-4">
                   <h3 className="text-sm font-semibold text-[#0F172A]">Your recovery number</h3>
                   <p className="mt-2 text-sm text-[#475569]">
-                    Forward missed calls from your business phone to this number so AutoRevenueOS can capture leads and send booking links.
+                    Forward missed calls from your clinic or practice phone to this number so AutoRevenueOS can capture enquiries and send your appointment link.
                   </p>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <span className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm font-medium text-[#0F172A] font-mono">
@@ -360,23 +364,23 @@ export default function SetupPage() {
             </section>
           )}
 
-          {/* Step 3: Connect booking system */}
+          {/* Step 3: Connect scheduling system */}
           {step === 3 && (
             <section className="rounded-lg border border-[#E5E7EB] bg-[#FAFAFA]/50 p-5">
-              <h2 className="text-sm font-bold text-[#0F172A]">Connect your booking system</h2>
+              <h2 className="text-sm font-bold text-[#0F172A]">Connect your scheduling system</h2>
               <p className="mt-2 text-sm text-[#475569]">
-                AutoRevenueOS charges £3 only when a confirmed booking is received from your booking system.
-                Choose how you take bookings and follow the steps to connect.
+                AutoRevenueOS charges £3 only when a confirmed appointment is received from your scheduling system.
+                Choose how you manage appointments and follow the steps to connect.
               </p>
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[
-                  { id: 'square', label: 'Square Appointments', logo: '/integrations/square.svg', alt: 'Square logo' },
+                  { id: 'square', label: 'Square Appointments', logo: 'https://logotyp.us/file/square.svg', alt: 'Square logo' },
                   { id: 'fresha', label: 'Fresha', logo: '/integrations/fresha.svg', alt: 'Fresha logo' },
-                  { id: 'timely', label: 'Timely', logo: '/integrations/timely.svg', alt: 'Timely logo' },
+                  { id: 'timely', label: 'Timely', logo: 'https://logotyp.us/file/timely.svg', alt: 'Timely logo' },
                   { id: 'calendly', label: 'Calendly', logo: '/integrations/calendly.svg', alt: 'Calendly logo' },
                   { id: 'treatwell', label: 'Treatwell', logo: undefined, alt: 'Treatwell' },
                   { id: 'google_sheets', label: 'Google Sheets', logo: undefined, alt: 'Google Sheets' },
-                  { id: 'other', label: 'Other', logo: undefined, alt: 'Other booking systems' },
+                  { id: 'other', label: 'Other', logo: undefined, alt: 'Other scheduling systems' },
                 ].map((card) => (
                   <button
                     key={card.id}
@@ -393,16 +397,17 @@ export default function SetupPage() {
                         <img
                           src={card.logo}
                           alt={card.alt}
-                          className="h-6 w-6 rounded-md bg-slate-50 object-contain"
+                          className="h-6 w-auto object-contain"
                           loading="lazy"
+                          draggable={false}
                         />
                       )}
                       <span className="text-sm font-semibold text-[#0F172A]">{card.label}</span>
                     </div>
                     <span className="mt-1 text-xs text-[#64748B]">
                       {card.id === 'other'
-                        ? 'Use automation tools or another booking system.'
-                        : 'Connect bookings from this system to AutoRevenueOS.'}
+                        ? 'Use automation tools or another scheduling system.'
+                        : 'Connect confirmed appointments from this system to AutoRevenueOS.'}
                     </span>
                     <span className="mt-2 inline-flex rounded-full bg-[#1E3A8A] px-3 py-1 text-xs font-semibold text-white">
                       Connect
@@ -415,7 +420,7 @@ export default function SetupPage() {
                 {!bookingIntegrations || integrationsLoading ? (
                   <p className="text-sm text-[#94A3B8]">Loading connection instructions…</p>
                 ) : !selectedSystem ? (
-                  <p className="text-sm text-[#64748B]">Select your booking system above to see the steps.</p>
+                  <p className="text-sm text-[#64748B]">Select your scheduling system above to see the steps.</p>
                 ) : (
                   (() => {
                     const provider = getSelectedProvider();
@@ -440,7 +445,7 @@ export default function SetupPage() {
                             <li>Go to Webhooks (or Subscriptions).</li>
                             <li>Create a new webhook or subscription for booking / appointment events.</li>
                             <li>Paste the Webhook URL from AutoRevenueOS into the destination URL field and save.</li>
-                            <li>Make a test booking to check that AutoRevenueOS receives it.</li>
+                            <li>Make a test appointment to check that AutoRevenueOS receives it.</li>
                           </ol>
                         )}
                         {selectedSystem === 'calendly' && (
@@ -449,52 +454,52 @@ export default function SetupPage() {
                             <li>Find Webhooks (or API &amp; webhooks) and create a new webhook subscription.</li>
                             <li>Select invitee created / invitee canceled (or equivalent booking events).</li>
                             <li>Paste the Webhook URL from AutoRevenueOS into the URL field and save.</li>
-                            <li>Book a test appointment in Calendly to confirm it appears in AutoRevenueOS.</li>
+                            <li>Schedule a test appointment in Calendly to confirm it appears in AutoRevenueOS.</li>
                           </ol>
                         )}
                         {selectedSystem === 'google_sheets' && (
                           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#475569]">
                             <li>Use Google Apps Script, Zapier or Make to watch your bookings sheet.</li>
-                            <li>Trigger the flow when a row is added or updated for a confirmed booking.</li>
+                            <li>Trigger the flow when a row is added or updated for a confirmed appointment.</li>
                             <li>Add an action that POSTs the row data to the Webhook URL from AutoRevenueOS.</li>
-                            <li>Map sheet columns to customer name, phone and appointment date/time.</li>
-                            <li>Add a test row to confirm AutoRevenueOS receives the booking.</li>
+                            <li>Map sheet columns to patient/client name, phone and appointment date/time.</li>
+                            <li>Add a test row to confirm AutoRevenueOS receives the appointment.</li>
                           </ol>
                         )}
                         {selectedSystem === 'fresha' && (
                           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#475569]">
                             <li>Use Zapier, Make or another automation tool connected to Fresha.</li>
-                            <li>Create a workflow that triggers when a booking is confirmed.</li>
-                            <li>Add an action that POSTs the booking details to the Webhook URL from AutoRevenueOS.</li>
-                            <li>Include at least the client name, phone number and appointment date/time.</li>
-                            <li>Turn the workflow on and create a test booking to confirm it reaches AutoRevenueOS.</li>
+                            <li>Create a workflow that triggers when an appointment is confirmed.</li>
+                            <li>Add an action that POSTs the appointment details to the Webhook URL from AutoRevenueOS.</li>
+                            <li>Include at least the patient/client name, phone number and appointment date/time.</li>
+                            <li>Turn the workflow on and create a test appointment to confirm it reaches AutoRevenueOS.</li>
                           </ol>
                         )}
                         {selectedSystem === 'timely' && (
                           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#475569]">
                             <li>Use Zapier, Make or another automation tool connected to Timely.</li>
-                            <li>Create a workflow that triggers when a booking is confirmed.</li>
-                            <li>Add an action that POSTs the booking details to the Webhook URL from AutoRevenueOS.</li>
-                            <li>Include at least the client name, phone number and appointment date/time.</li>
-                            <li>Turn the workflow on and create a test booking to confirm it reaches AutoRevenueOS.</li>
+                            <li>Create a workflow that triggers when an appointment is confirmed.</li>
+                            <li>Add an action that POSTs the appointment details to the Webhook URL from AutoRevenueOS.</li>
+                            <li>Include at least the patient/client name, phone number and appointment date/time.</li>
+                            <li>Turn the workflow on and create a test appointment to confirm it reaches AutoRevenueOS.</li>
                           </ol>
                         )}
                         {selectedSystem === 'treatwell' && (
                           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#475569]">
                             <li>Use a Treatwell integration, Zapier, Make or another automation tool.</li>
-                            <li>Trigger the flow when a booking is confirmed.</li>
-                            <li>Add an action that POSTs the booking details to the Webhook URL from AutoRevenueOS.</li>
-                            <li>Include at least the client name, phone number and appointment date/time.</li>
-                            <li>Turn the flow on and create a test booking to verify it reaches AutoRevenueOS.</li>
+                            <li>Trigger the flow when an appointment is confirmed.</li>
+                            <li>Add an action that POSTs the appointment details to the Webhook URL from AutoRevenueOS.</li>
+                            <li>Include at least the patient/client name, phone number and appointment date/time.</li>
+                            <li>Turn the flow on and create a test appointment to verify it reaches AutoRevenueOS.</li>
                           </ol>
                         )}
                         {selectedSystem === 'other' && (
                           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#475569]">
                             <li>Use Zapier, Make, Pipedream or another automation tool.</li>
-                            <li>Trigger the flow when a booking is confirmed in your booking system or CRM.</li>
-                            <li>Add an action that POSTs the booking details to the Webhook URL from AutoRevenueOS.</li>
-                            <li>Include at least the customer name, phone number and appointment date/time.</li>
-                            <li>Turn the flow on and create a test booking to make sure AutoRevenueOS records it.</li>
+                            <li>Trigger the flow when an appointment is confirmed in your scheduling system or CRM.</li>
+                            <li>Add an action that POSTs the appointment details to the Webhook URL from AutoRevenueOS.</li>
+                            <li>Include at least the patient/client name, phone number and appointment date/time.</li>
+                            <li>Turn the flow on and create a test appointment to make sure AutoRevenueOS records it.</li>
                           </ol>
                         )}
                         <div className="mt-4">
@@ -529,12 +534,12 @@ export default function SetupPage() {
             </section>
           )}
 
-          {/* Completed: Recovery number and instructions (after booking step) */}
+          {/* Completed: Recovery number and instructions (after scheduling step) */}
           {step === 3 && hasRecoveryNumber && (
             <section className="rounded-lg border border-[#E5E7EB] bg-[#FAFAFA]/50 p-5">
               <h2 className="text-sm font-bold text-[#0F172A]">Your recovery number</h2>
               <p className="mt-2 text-sm text-[#475569]">
-                Forward missed calls from your business phone to this number so we can capture leads and send booking links.
+                Forward missed calls from your clinic or practice phone to this number so we can capture enquiries and send your appointment link.
               </p>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-sm font-medium text-[#0F172A] font-mono">

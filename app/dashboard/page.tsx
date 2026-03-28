@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { ADMIN_HOME_PATH } from '@/lib/internal-operator';
 import { useEffect, useState } from 'react';
 import {
   StatusBadge,
@@ -83,6 +84,7 @@ function formatDate(value: string) {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +97,10 @@ export default function DashboardPage() {
         const res = await fetch('/api/dashboard');
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
+          if (res.status === 403) {
+            router.replace(ADMIN_HOME_PATH);
+            return;
+          }
           if (res.status === 400 && (body?.error === 'No business linked to this user' || body?.error?.includes('business'))) {
             if (!cancelled) setError('no_business');
             return;
@@ -122,7 +128,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
 
   const recoveredLeads = data?.recovered_leads ?? 0;
   const confirmedBookings = data?.confirmed_bookings ?? 0;
@@ -180,7 +186,6 @@ export default function DashboardPage() {
   const bookedCount = pipeline.filter((p) => p.status === 'Booked').length;
   const lostCount = pipeline.filter((p) => p.status === 'Lost').length;
 
-  const router = useRouter();
   const openInboxConversation = (contactId: string | null, channel: string | null) => {
     if (!contactId || !channel) return;
     router.push(`/inbox?contact=${contactId}&channel=${channel}`);
@@ -219,11 +224,27 @@ export default function DashboardPage() {
         )}
         {!error && data && (data.activation_status ?? 'payment_required') !== 'active' && (
           <div className="animate-fade-in-up mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900 shadow-sm">
-            <p className="font-medium">Add your card to activate AutoRevenueOS</p>
-            <p className="mt-1 text-amber-800">You&apos;ll only be charged when a booking is confirmed (£3 per confirmed booking). No upfront charge. Phone recovery and billing are active after you add a payment method.</p>
-            <a href="/settings" className="mt-3 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
-              Add card in Settings
-            </a>
+            {(data.activation_status ?? '') === 'billing_ready' ? (
+              <>
+                <p className="font-medium">Activation incomplete</p>
+                <p className="mt-1 text-amber-800">
+                  Your payment method is on file, but phone recovery is not fully provisioned yet. Open Settings to retry provisioning or review the error message.
+                </p>
+                <a href="/settings" className="mt-3 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
+                  Open Settings
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">Complete activation</p>
+                <p className="mt-1 text-amber-800">
+                  Add your card and we will provision your phone recovery number. You&apos;ll only be charged £3 per confirmed booking from your scheduling system—no upfront charge.
+                </p>
+                <a href="/settings" className="mt-3 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
+                  Continue in Settings
+                </a>
+              </>
+            )}
           </div>
         )}
         {error && error !== 'no_business' && (

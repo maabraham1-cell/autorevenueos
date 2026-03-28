@@ -11,9 +11,17 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const error = searchParams.get("error");
+  const hasCode = Boolean(code);
+  const hasState = Boolean(state);
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (request.nextUrl ? `${request.nextUrl.protocol}//${request.nextUrl.host}` : "");
   const settingsUrl = baseUrl ? `${baseUrl}/settings` : "/settings";
+
+  console.log("[meta/callback] query presence", {
+    hasCode,
+    hasState,
+    error: error ?? null,
+  });
 
   if (error) {
     const errDesc = searchParams.get("error_description") || error;
@@ -22,6 +30,13 @@ export async function GET(request: NextRequest) {
   }
 
   if (!code || !state) {
+    // Avoid logging the full state value (it is signed but still includes internal ids).
+    // We only log presence and lengths.
+    console.warn("[meta/callback] Missing code/state", {
+      hasCode,
+      hasState,
+      stateLen: state ? state.length : 0,
+    });
     return NextResponse.redirect(`${settingsUrl}?meta=error&message=${encodeURIComponent("Missing code or state")}`);
   }
 

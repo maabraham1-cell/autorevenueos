@@ -5,6 +5,13 @@ import Script from 'next/script';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { trackEvent } from '@/lib/ga4';
+import {
+  ADMIN_HOME_PATH,
+  defaultPostAuthPathFromRole,
+  sanitizeAppPathForAdminRole,
+} from '@/lib/internal-operator';
+import { getProfileRole } from '@/lib/client-profile-role';
+import { authCallbackUrl } from '@/lib/public-app-url';
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
 
@@ -53,7 +60,13 @@ function LoginForm() {
   const turnstileContainerRef = useRef<HTMLDivElement>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const [turnstileReady, setTurnstileReady] = useState(false);
+  /** If Turnstile script/widget never works (blocked, DNS, domain mismatch), fall back to checkbox. */
+  const [turnstileUseFallback, setTurnstileUseFallback] = useState(false);
+  /** Bump on sign-out so Turnstile remounts and verification UI resets without a full page reload. */
+  const [turnstileRemountKey, setTurnstileRemountKey] = useState(0);
   const submittingRef = useRef(false);
+
+  const turnstileWidgetActive = Boolean(TURNSTILE_SITE_KEY) && !turnstileUseFallback;
 
   const resetTurnstile = () => {
     setTurnstileToken('');
@@ -94,7 +107,6 @@ function LoginForm() {
     humanVerified &&
     email.trim().length > 0 &&
     password.trim().length > 0 &&
-    (!TURNSTILE_SITE_KEY || turnstileToken.length > 0) &&
     (mode === 'login' ||
       (signupFieldsComplete &&
         signupPasswordStrongEnough &&
@@ -108,13 +120,95 @@ function LoginForm() {
     }
   }, [searchParams]);
 
+  // Already signed in → leave login page (avoids "stuck" with greyed button + redirectTo in URL).
   useEffect(() => {
-    if (!TURNSTILE_SITE_KEY || !turnstileReady || !turnstileContainerRef.current) return;
+    let cancelled = false;
+    void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (cancelled || !session?.user) return;
+      const role = await getProfileRole(supabase, session.user.id);
+      const defaultLanding = defaultPostAuthPathFromRole(role);
+      const redirectToRaw = searchParams.get('redirectTo') || defaultLanding;
+      let redirectToSafe = redirectToRaw.startsWith('/')
+        ? redirectToRaw.replace(/^\/+/, '/')
+        : defaultLanding;
+      redirectToSafe = sanitizeAppPathForAdminRole(redirectToSafe, role);
+      router.replace(redirectToSafe);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, searchParams, supabase]);
+
+  // After logout, navigation often mounts this page *after* SIGNED_OUT already fired — remount Turnstile then.
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled || session) return;
+      setHumanVerified(false);
+      setHumanTouched(false);
+      setTurnstileToken('');
+      setTurnstileUseFallback(false);
+      setTurnstileRemountKey((k) => k + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return;
+      setHumanVerified(false);
+      setHumanTouched(false);
+      setTurnstileToken('');
+      setTurnstileUseFallback(false);
+      setTurnstileRemountKey((k) => k + 1);
+      if (typeof window !== 'undefined' && turnstileWidgetIdRef.current) {
+        const w = (window as any).turnstile;
+        try {
+          w?.reset?.(turnstileWidgetIdRef.current);
+        } catch {
+          /* widget may already be removed */
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [supabase.auth]);
+
+  useEffect(() => {
+    if (!TURNSTILE_SITE_KEY || turnstileUseFallback) return;
+    const id = window.setTimeout(() => {
+      if (!turnstileReady) {
+        setTurnstileUseFallback(true);
+      }
+    }, 12000);
+    return () => window.clearTimeout(id);
+  }, [TURNSTILE_SITE_KEY, turnstileReady, turnstileUseFallback]);
+
+  useEffect(() => {
+    if (turnstileUseFallback && TURNSTILE_SITE_KEY) {
+      setHumanVerified(false);
+      setTurnstileToken('');
+    }
+  }, [turnstileUseFallback]);
+
+  useEffect(() => {
+    if (!turnstileWidgetActive || !turnstileReady || !turnstileContainerRef.current) return;
     const w = (window as any).turnstile;
     if (!w?.render) return;
-    if (turnstileWidgetIdRef.current) return;
-    const id = w.render(turnstileContainerRef.current, {
+    const el = turnstileContainerRef.current;
+    // appearance: 'always' avoids Cloudflare's default "managed" UX where the widget
+    // often hides or changes shape (described as unpredictable). Users always see the check.
+    const widgetId = w.render(el, {
       sitekey: TURNSTILE_SITE_KEY,
+      appearance: 'always',
+      theme: 'light',
+      'refresh-expired': 'auto',
       callback: (token: string) => {
         setTurnstileToken(token);
         setHumanVerified(true);
@@ -128,16 +222,18 @@ function LoginForm() {
         setHumanVerified(false);
       },
     });
-    turnstileWidgetIdRef.current = id;
+    turnstileWidgetIdRef.current = widgetId;
     return () => {
-      if (turnstileWidgetIdRef.current != null && w.remove) {
+      turnstileWidgetIdRef.current = null;
+      if (widgetId != null && w.remove) {
         try {
-          w.remove(turnstileWidgetIdRef.current);
-        } catch (_) {}
-        turnstileWidgetIdRef.current = null;
+          w.remove(widgetId);
+        } catch (_) {
+          /* iframe may already be gone */
+        }
       }
     };
-  }, [turnstileReady]);
+  }, [turnstileReady, turnstileWidgetActive, turnstileRemountKey]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -155,7 +251,18 @@ function LoginForm() {
       return;
     }
 
-    if (TURNSTILE_SITE_KEY && turnstileToken) {
+    // If Turnstile is enabled, require we actually have a token to verify.
+    // This prevents a "Verified" UI state from allowing auth without the token.
+    if (turnstileWidgetActive && !turnstileToken) {
+      setHumanTouched(true);
+      setError('Please verify you are human (missing verification token).');
+      resetTurnstile();
+      setLoading(false);
+      submittingRef.current = false;
+      return;
+    }
+
+    if (turnstileWidgetActive && turnstileToken) {
       const verifyRes = await fetch('/api/turnstile-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,12 +321,11 @@ function LoginForm() {
     try {
       if (mode === 'signup') {
         const fullNameValue = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
-        const origin = typeof window !== 'undefined' ? window.location.origin : '';
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: origin ? `${origin}/auth/callback?next=/setup` : undefined,
+            emailRedirectTo: authCallbackUrl('/setup'),
             data: {
               title: title.trim() || null,
               first_name: firstName.trim() || null,
@@ -247,7 +353,16 @@ function LoginForm() {
           }
           const settingsRes = await fetch('/api/settings');
           if (settingsRes.status === 400) {
-            router.push('/setup');
+            const {
+              data: { session: sessionAfter },
+            } = await supabase.auth.getSession();
+            const uid = sessionAfter?.user?.id;
+            const role = uid ? await getProfileRole(supabase, uid) : null;
+            router.push(
+              defaultPostAuthPathFromRole(role) === ADMIN_HOME_PATH
+                ? ADMIN_HOME_PATH
+                : '/setup',
+            );
             return;
           }
           await supabase.auth.signOut();
@@ -269,10 +384,19 @@ function LoginForm() {
         if (error) throw error;
       }
 
-      const redirectTo = searchParams.get('redirectTo') || '/dashboard';
-      router.push(redirectTo);
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+      const role = user?.id ? await getProfileRole(supabase, user.id) : null;
+      const defaultLanding = defaultPostAuthPathFromRole(role);
+      const redirectToRaw =
+        searchParams.get('redirectTo') || defaultLanding;
+      let redirectToSafe = redirectToRaw.startsWith('/')
+        ? redirectToRaw.replace(/^\/+/, '/')
+        : defaultLanding;
+      redirectToSafe = sanitizeAppPathForAdminRole(redirectToSafe, role);
+      router.push(redirectToSafe);
     } catch (e: any) {
-      if (TURNSTILE_SITE_KEY) resetTurnstile();
+      if (turnstileWidgetActive) resetTurnstile();
       const msg = e?.message ?? e?.error_description ?? '';
       const isRateLimit =
         /rate limit|rate_limit|too many requests|too many attempts/i.test(msg);
@@ -296,7 +420,9 @@ function LoginForm() {
           {mode === 'login' ? 'Log in to AutoRevenueOS' : 'Create your AutoRevenueOS account'}
         </h1>
         <p className="mt-1 text-sm text-[#64748B]">
-          Free to install. Only £3 per recovered booking lead. Use your work email to get started.
+          {mode === 'login'
+            ? 'Log in to access your account, inbox, and dashboard.'
+            : 'Free to install. Only £3 per recovered booking lead. Use your work email to get started.'}
         </p>
 
         {emailVerificationSent && (
@@ -518,9 +644,8 @@ function LoginForm() {
                     setError(null);
                     setForgotPasswordLoading(true);
                     try {
-                      const origin = typeof window !== 'undefined' ? window.location.origin : '';
                       const { error: resetError } = await supabase.auth.resetPasswordForEmail(e, {
-                        redirectTo: origin ? `${origin}/auth/callback?next=/auth/set-password` : undefined,
+                        redirectTo: authCallbackUrl('/auth/set-password'),
                       });
                       if (resetError) throw resetError;
                       setForgotPasswordSent(e);
@@ -560,15 +685,20 @@ function LoginForm() {
           </section>
 
           <div className="pt-1">
-            {TURNSTILE_SITE_KEY ? (
+            {turnstileWidgetActive ? (
               <>
                 <Script
                   src="https://challenges.cloudflare.com/turnstile/v0/api.js"
                   strategy="afterInteractive"
                   onLoad={() => setTurnstileReady(true)}
+                  onError={() => setTurnstileUseFallback(true)}
                 />
                 <div className="flex flex-col gap-1.5">
-                  <div ref={turnstileContainerRef} className="min-h-[65px] w-full" />
+                  <div
+                    key={turnstileRemountKey}
+                    ref={turnstileContainerRef}
+                    className="min-h-[65px] w-full"
+                  />
                   {humanVerified && (
                     <p className="text-xs font-medium text-emerald-700">✔ Verified</p>
                   )}
@@ -576,6 +706,11 @@ function LoginForm() {
               </>
             ) : (
               <>
+                {TURNSTILE_SITE_KEY && turnstileUseFallback ? (
+                  <p className="mb-2 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                    Security check couldn’t load (blocked or network). Tick the box below to continue.
+                  </p>
+                ) : null}
                 <label className="inline-flex items-center gap-2 text-xs text-[#64748B]">
                   <input
                     type="checkbox"

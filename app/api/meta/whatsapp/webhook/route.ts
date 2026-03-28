@@ -3,7 +3,8 @@ import crypto from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { supabase as anonSupabase } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/phone";
-import { findOrCreateConversation, touchConversation } from "@/lib/conversations";
+import { handleInboundMessage } from "@/lib/messaging/handle-inbound-message";
+import { normalizeWhatsAppPayload } from "@/lib/messaging/normalize";
 
 const WHATSAPP_CHANNEL = "whatsapp";
 const LOG_PREFIX = "[whatsapp-webhook]";
@@ -210,7 +211,7 @@ async function processWhatsAppChange(
   if (phoneNumberId) {
     const byWhatsAppId = await supabase
       .from("businesses")
-      .select("id, name")
+      .select("id, name, booking_link, ai_auto_send_enabled, whatsapp_phone_number_id, meta_page_id, meta_page_access_token")
       .eq("whatsapp_phone_number_id", phoneNumberId)
       .limit(1)
       .maybeSingle();
@@ -230,7 +231,7 @@ async function processWhatsAppChange(
   if (!business && phoneNumberId) {
     const byMetaPageId = await supabase
       .from("businesses")
-      .select("id, name")
+      .select("id, name, booking_link, ai_auto_send_enabled, whatsapp_phone_number_id, meta_page_id, meta_page_access_token")
       .eq("meta_page_id", phoneNumberId)
       .limit(1)
       .maybeSingle();
@@ -258,7 +259,7 @@ async function processWhatsAppChange(
       seen.add(candidate);
       const byMobile = await supabase
         .from("businesses")
-        .select("id, name, business_mobile")
+        .select("id, name, business_mobile, booking_link, ai_auto_send_enabled, whatsapp_phone_number_id, meta_page_id, meta_page_access_token")
         .eq("business_mobile", candidate)
         .limit(1)
         .maybeSingle();
@@ -320,173 +321,31 @@ async function processWhatsAppChange(
     }
   }
 
-  // --- Find or create contact ---
-  let contact: { id: string; name?: string | null } | null = null;
+  const normalized = normalizeWhatsAppPayload({
+    from,
+    messageId: msgId ?? null,
+    textBody: textBody ?? null,
+    profileName: profileNameRaw ?? null,
+    metadata: webhookSnippet as any,
+  });
 
-  const { data: existingByExternalId, error: errByExt } = await supabase
-    .from("contacts")
-    .select("id, name")
-    .eq("business_id", business.id)
-    .eq("channel", WHATSAPP_CHANNEL)
-    .eq("external_id", from)
-    .maybeSingle();
-
-  if (errByExt) {
-    console.error(`${LOG_PREFIX} contact lookup by external_id error`, {
-      requestId,
-      error: errByExt,
-      errorMessage: errByExt.message,
-      code: (errByExt as any).code,
-    });
-  }
-  if (existingByExternalId) {
-    contact = existingByExternalId;
-    console.log(`${LOG_PREFIX} contact found by external_id`, { requestId, contactId: contact.id });
-  }
-
-  if (!contact) {
-    const { data: existingByPhone, error: errByPhone } = await supabase
-      .from("contacts")
-      .select("id, name")
-      .eq("business_id", business.id)
-      .eq("phone", from)
-      .maybeSingle();
-    if (errByPhone) {
-      console.error(`${LOG_PREFIX} contact lookup by phone error`, { requestId, error: errByPhone });
-    }
-    if (existingByPhone) {
-      contact = existingByPhone;
-      console.log(`${LOG_PREFIX} contact found by phone`, { requestId, contactId: contact.id });
-    }
-  }
-
-  if (!contact) {
-    const { data: inserted, error: insertContactError } = await supabase
-      .from("contacts")
-      .insert({
-        business_id: business.id,
-        channel: WHATSAPP_CHANNEL,
-        external_id: from,
-        phone: from,
-        name: profileNameRaw || null,
-      })
-      .select("id, name")
-      .single();
-
-    if (insertContactError) {
-      console.error(`${LOG_PREFIX} contact insert failed`, {
-        requestId,
-        error: insertContactError,
-        errorMessage: insertContactError.message,
-        code: (insertContactError as any).code,
-        details: (insertContactError as any).details,
-      });
-      return;
-    }
-    contact = inserted;
-    console.log(`${LOG_PREFIX} contact created`, { requestId, contactId: contact.id });
-  }
-
-  // If we have a WhatsApp profile name and the contact has no name yet, set it (one-way).
-  if (profileNameRaw && (!contact.name || String(contact.name).trim().length === 0)) {
-    const { error: nameUpdateError } = await supabase
-      .from("contacts")
-      .update({ name: profileNameRaw })
-      .eq("id", contact.id);
-    if (nameUpdateError) {
-      console.error(`${LOG_PREFIX} contact name update failed`, {
-        requestId,
-        contactId: contact.id,
-        error: nameUpdateError,
-      });
-    } else {
-      contact.name = profileNameRaw;
-      console.log(`${LOG_PREFIX} contact name set from WhatsApp profile`, {
-        requestId,
-        contactId: contact.id,
-      });
-    }
-  }
-
-  // --- Conversation: find or create thread for this contact/channel ---
-  const conversation = await findOrCreateConversation({
-    supabase,
+  const result = await handleInboundMessage({
     businessId: business.id as string,
-    contactId: contact.id as string,
-    channel: WHATSAPP_CHANNEL,
-    source: "whatsapp_inbound",
-    initialMessageAt: new Date().toISOString(),
-    initialPreview: textBody || null,
+    channel: normalized.channel,
+    externalMessageId: normalized.externalMessageId,
+    externalContactId: normalized.externalContactId,
+    phone: normalized.phone,
+    displayName: normalized.displayName,
+    textBody: normalized.textBody,
+    metadata: normalized.metadata,
   });
 
-  const conversationId = (conversation && (conversation as any).id) as string | undefined;
-
-  // --- Event insert ---
-  const { data: evt, error: eventError } = await supabase
-    .from("events")
-    .insert({
-      business_id: business.id,
-      contact_id: contact.id,
-      source_channel: WHATSAPP_CHANNEL,
-      event_type: "incoming_message",
-      payload: webhookSnippet,
-      external_id: msgId || null,
-    })
-    .select("id")
-    .single();
-
-  if (eventError) {
-    console.error(`${LOG_PREFIX} event insert failed`, {
-      requestId,
-      error: eventError,
-      errorMessage: eventError.message,
-      code: (eventError as any).code,
-      details: (eventError as any).details,
-    });
-    return;
-  }
-  console.log(`${LOG_PREFIX} event inserted`, { requestId, eventId: evt?.id });
-
-  // --- Message insert (inbox thread) ---
-  const { data: insertedMessage, error: messageError } = await supabase
-    .from("messages")
-    .insert({
-      business_id: business.id,
-      contact_id: contact.id,
-      channel: WHATSAPP_CHANNEL,
-      direction: "inbound",
-      body: textBody || null,
-      external_id: msgId || null,
-      conversation_id: conversationId ?? null,
-    })
-    .select("id, body, created_at")
-    .single();
-
-  if (messageError) {
-    console.error(`${LOG_PREFIX} message insert failed`, {
-      requestId,
-      error: messageError,
-      errorMessage: messageError.message,
-      code: (messageError as any).code,
-      details: (messageError as any).details,
-    });
-    return;
-  }
-
-  console.log(`${LOG_PREFIX} message inserted; inbox thread updated`, {
+  console.log(`${LOG_PREFIX} meta inbound processed`, {
     requestId,
-    messageId: insertedMessage?.id,
-    businessId: business.id,
-    contactId: contact.id,
-    channel: WHATSAPP_CHANNEL,
+    skipped: result.skipped,
+    contactId: result.contactId,
+    conversationId: result.conversationId,
+    ai: result.ai,
+    bookingDraftCreated: result.ai?.action === "create_booking_request_draft",
   });
-
-  if (conversationId) {
-    await touchConversation({
-      supabase,
-      conversationId,
-      lastMessageAt: insertedMessage.created_at as string,
-      lastMessagePreview: textBody || null,
-    });
-  }
 }

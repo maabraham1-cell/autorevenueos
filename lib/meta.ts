@@ -39,3 +39,54 @@ export async function sendMetaReply({
   }
   return data;
 }
+
+function isNonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+function toGraphRecipientId(value: string): string {
+  return value.trim();
+}
+
+/**
+ * Messenger send helper.
+ * Uses the business-scoped page access token set during Meta connect flow.
+ */
+export async function sendMessengerMessage(params: {
+  recipientId: string;
+  text: string;
+  pageAccessToken?: string | null;
+}): Promise<Record<string, unknown>> {
+  const recipientId = toGraphRecipientId(params.recipientId);
+  if (!isNonEmptyString(recipientId)) {
+    throw new Error("Messenger recipient id is required.");
+  }
+
+  return sendMetaReply({
+    recipientId,
+    text: params.text,
+    pageAccessToken: params.pageAccessToken,
+  });
+}
+
+/**
+ * Instagram DM send helper.
+ * Meta supports IG DM sending through the same /me/messages endpoint when
+ * the token/account has Instagram messaging permissions.
+ */
+export async function sendInstagramMessage(params: {
+  recipientId: string;
+  text: string;
+  pageAccessToken?: string | null;
+}): Promise<Record<string, unknown>> {
+  const recipientId = toGraphRecipientId(params.recipientId);
+  if (!isNonEmptyString(recipientId)) {
+    throw new Error("Instagram recipient id is required.");
+  }
+
+  return sendMetaReply({
+    recipientId,
+    text: params.text,
+    pageAccessToken: params.pageAccessToken,
+  });
+}

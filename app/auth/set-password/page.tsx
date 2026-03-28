@@ -6,7 +6,8 @@ import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 
 /**
  * After clicking the "Reset password" link in email, user is redirected here
- * (via /auth/callback?next=/auth/set-password). They set a new password and are sent to Settings.
+ * (via /auth/callback?next=/auth/set-password). They set a new password, are
+ * signed out, and must log in again.
  */
 export default function SetPasswordPage() {
   const router = useRouter();
@@ -33,7 +34,8 @@ export default function SetPasswordPage() {
       const { error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
       setDone(true);
-      setTimeout(() => router.replace('/settings'), 1500);
+      await supabase.auth.signOut();
+      setTimeout(() => router.replace('/login?redirectTo=/dashboard'), 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update password.');
     } finally {
@@ -46,7 +48,7 @@ export default function SetPasswordPage() {
       <div className="flex min-h-screen items-center justify-center bg-[#020617] px-4">
         <div className="w-full max-w-sm rounded-xl bg-white p-6 text-center shadow-lg">
           <p className="text-sm font-medium text-[#0F172A]">Password updated.</p>
-          <p className="mt-2 text-xs text-[#64748B]">Redirecting you to Settings…</p>
+          <p className="mt-2 text-xs text-[#64748B]">Please log in again to continue.</p>
         </div>
       </div>
     );

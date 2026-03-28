@@ -1,16 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
 import { getProviderBySource } from "@/lib/booking-providers";
+import { isAdminRole } from "@/lib/roles";
+import { supabase } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, business } = await getCurrentUserAndBusiness(request);
+    const { user, business, role } = await getCurrentUserAndBusiness(request);
 
     if (!user) {
       return NextResponse.json(
         { error: "Not authenticated" },
         { status: 401 },
+      );
+    }
+
+    if (isAdminRole(role)) {
+      return NextResponse.json(
+        { error: "Forbidden. Internal admin accounts use the operator workspace." },
+        { status: 403 },
       );
     }
 

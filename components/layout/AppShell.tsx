@@ -6,12 +6,15 @@ import { useEffect, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import type { User } from '@supabase/supabase-js';
 import { isGa4AllowedPath, trackEvent } from '@/lib/ga4';
+import { fetchSessionRoleFromApi } from '@/lib/client-profile-role';
+import { ADMIN_HOME_PATH } from '@/lib/internal-operator';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
 
   const isMarketing =
@@ -38,6 +41,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    void fetchSessionRoleFromApi().then((r) => {
+      if (!cancelled) setIsAdmin(!!r?.isAdmin);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
   async function handleLogout() {
     const supabase = createSupabaseBrowserClient();
     await supabase.auth.signOut();
@@ -51,18 +68,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         { href: '/marketing#calculator', label: 'Revenue check' },
         { href: '/marketing#proof', label: 'Proof' },
       ]
-    : [
-        { href: '/dashboard', label: 'Dashboard' },
-        { href: '/inbox', label: 'Inbox' },
-        { href: '/recoveries', label: 'Recoveries' },
-        { href: '/settings', label: 'Settings' },
-      ];
+    : isAdmin
+      ? [
+          { href: ADMIN_HOME_PATH, label: 'Overview' },
+          { href: '/inbox', label: 'Inbox' },
+          { href: '/admin/customers', label: 'Customers' },
+        ]
+      : [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/inbox', label: 'Inbox' },
+          { href: '/recoveries', label: 'Recoveries' },
+          { href: '/settings', label: 'Settings' },
+        ];
 
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-20 border-b border-[#E5E7EB] bg-white/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link href="/" className="flex items-center gap-2" aria-label="AutoRevenue OS home">
+          <Link
+            href={isApp && isAdmin ? ADMIN_HOME_PATH : '/'}
+            className="flex items-center gap-2"
+            aria-label="AutoRevenue OS home"
+          >
             <img
               src="/brand/autorevenueos-logo-blue.svg"
               alt="AutoRevenue OS"
@@ -103,10 +130,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {isMarketing && user ? (
                 <>
                   <Link
-                    href="/dashboard"
+                    href={isAdmin ? ADMIN_HOME_PATH : '/dashboard'}
                     className="ml-2 hidden rounded-lg px-3 py-2 text-sm font-medium text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:inline-flex"
                   >
-                    Dashboard
+                    {isAdmin ? 'Overview' : 'Dashboard'}
                   </Link>
                   <button
                     type="button"
@@ -160,12 +187,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </nav>
         </div>
+      </header>
 
-        {/* Mobile menu */}
-        {mobileOpen && (
-          <div className="border-t border-[#E5E7EB] bg-white/95 shadow-md md:hidden">
-            <div className="mx-auto max-w-6xl px-4 py-3 sm:px-6">
-              <div className="flex flex-col gap-1">
+      {/* Mobile menu: fixed below header + safe area so it is never clipped */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-[100] md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/25"
+            aria-label="Close menu"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div
+            className="absolute left-0 right-0 mx-4 flex max-h-[min(85vh,calc(100dvh-env(safe-area-inset-top)-3.5rem-env(safe-area-inset-bottom)))] flex-col overflow-hidden rounded-b-2xl border border-[#E5E7EB] bg-white shadow-xl"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 3.5rem)',
+            }}
+          >
+            <div className="max-h-[inherit] overflow-y-auto overscroll-contain px-4 py-3 sm:px-6">
+              <div className="flex flex-col gap-1 pb-[env(safe-area-inset-bottom,0px)]">
                 {navItems.map((item) => {
                   const isActive =
                     pathname === item.href ||
@@ -200,11 +245,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {isMarketing && user ? (
                   <>
                     <Link
-                      href="/dashboard"
+                      href={isAdmin ? ADMIN_HOME_PATH : '/dashboard'}
                       onClick={() => setMobileOpen(false)}
                       className="mt-1 inline-flex w-full items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-medium text-[#64748B]"
                     >
-                      Dashboard
+                      {isAdmin ? 'Overview' : 'Dashboard'}
                     </Link>
                     <button
                       type="button"
@@ -248,8 +293,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </div>
-        )}
-      </header>
+        </div>
+      )}
       <main className="flex-1">{children}</main>
       {isApp && (
         <>

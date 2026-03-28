@@ -2,6 +2,8 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { fetchSessionRoleFromApi } from "@/lib/client-profile-role";
+import { OperatorWorkspacePanel } from "@/components/operator/OperatorWorkspacePanel";
 import {
   StatusBadge,
   SummaryPill,
@@ -29,6 +31,34 @@ type InboxConversation = {
   proof_label: string;
   messages: InboxMessage[];
   has_unread?: boolean;
+  ai?: {
+    intent:
+      | "booking_request"
+      | "pricing_question"
+      | "reschedule"
+      | "general_question"
+      | "unclear";
+    confidence?: number;
+    entities: {
+      service?: string | null;
+      preferred_day?: string | null;
+      preferred_time?: string | null;
+      customer_name?: string | null;
+    };
+    action:
+      | "ask_followup"
+      | "send_booking_link"
+      | "create_booking_request_draft"
+      | "handoff"
+      | "none";
+    reply: string;
+  } | null;
+  booking_draft?: {
+    service?: string | null;
+    preferred_day?: string | null;
+    preferred_time?: string | null;
+    status?: "draft";
+  } | null;
 };
 
 type ContactDetails = {
@@ -80,15 +110,47 @@ function InboxContent() {
   const [selectedContact, setSelectedContact] = useState<ContactDetails | null>(null);
   const [savingContact, setSavingContact] = useState(false);
   const [contactSaveError, setContactSaveError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    void fetchSessionRoleFromApi().then((r) => setIsAdmin(!!r?.isAdmin));
+  }, []);
 
   const loadInbox = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/inbox");
+      const res = await fetch("/api/inbox", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      const payload = (await res.json().catch(() => null)) as
+        | InboxConversation[]
+        | { error?: string }
+        | null;
+
       if (!res.ok) {
-        throw new Error(`Inbox API error: ${res.status}`);
+        const msg =
+          payload &&
+          typeof payload === "object" &&
+          !Array.isArray(payload) &&
+          typeof (payload as { error?: string }).error === "string"
+            ? (payload as { error: string }).error
+            : res.status === 401
+              ? "Your session expired. Please sign in again."
+              : `Could not load inbox (${res.status}).`;
+        throw new Error(msg);
       }
-      const json = (await res.json()) as InboxConversation[];
+
+      if (!Array.isArray(payload)) {
+        console.error("[inbox] unexpected API shape", payload);
+        throw new Error("Inbox returned an unexpected response. Try refreshing the page.");
+      }
+
+      const json = payload.map((c) => ({
+        ...c,
+        messages: Array.isArray(c.messages) ? c.messages : [],
+      }));
+
       setConversations(json);
       setError(null);
 
@@ -109,7 +171,9 @@ function InboxContent() {
       );
     } catch (e) {
       console.error("[inbox] fetch error", e);
-      setError("Failed to load inbox conversations.");
+      setError(
+        e instanceof Error ? e.message : "Failed to load inbox conversations.",
+      );
     } finally {
       setLoading(false);
     }
@@ -133,6 +197,20 @@ function InboxContent() {
       null
     );
   }, [conversations, selectedKey]);
+
+  // Reset reply composer when switching threads.
+  useEffect(() => {
+    setReplyDraft("");
+    setReplyError(null);
+  }, [selectedKey]);
+
+  // Prefill the reply composer with the AI suggested reply (editable by the user).
+  useEffect(() => {
+    const aiReply = selectedConversation?.ai?.reply ?? "";
+    if (!aiReply) return;
+    if (replyDraft.trim().length > 0) return;
+    setReplyDraft(aiReply);
+  }, [selectedConversation?.conversation_id, selectedConversation?.ai?.reply, replyDraft]);
 
   // Load CRM contact details when the selected conversation changes.
   useEffect(() => {
@@ -202,11 +280,15 @@ function InboxContent() {
 
   const isWebsiteChat = selectedConversation?.channel === "website_chat";
   const isWhatsApp = selectedConversation?.channel === "whatsapp";
-  const canReply = !!selectedConversation?.contact_id && (isWebsiteChat || isWhatsApp);
+  const isMessenger = selectedConversation?.channel === "messenger";
+  const isInstagram = selectedConversation?.channel === "instagram";
+  const isMetaChannel = isWhatsApp || isMessenger || isInstagram;
 
-  async function handleSendReply(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = replyDraft.trim();
+  const canReply =
+    !!selectedConversation?.contact_id && (isWebsiteChat || isMetaChannel);
+
+  async function sendReplyText(text: string) {
+    const trimmed = text.trim();
     if (!trimmed || !canReply || sendingReply) return;
 
     setSendingReply(true);
@@ -214,15 +296,26 @@ function InboxContent() {
     try {
       const endpoint = isWhatsApp
         ? "/api/inbox/whatsapp/send"
-        : "/api/chat/website/reply";
+        : isMessenger || isInstagram
+          ? "/api/inbox/meta/send"
+          : "/api/chat/website/reply";
+
+      const payload =
+        isMessenger || isInstagram
+          ? {
+              contact_id: selectedConversation!.contact_id,
+              body: trimmed,
+              channel: selectedConversation!.channel as "messenger" | "instagram",
+            }
+          : {
+              contact_id: selectedConversation!.contact_id,
+              body: trimmed,
+            };
 
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contact_id: selectedConversation!.contact_id,
-          body: trimmed,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -250,6 +343,11 @@ function InboxContent() {
     }
   }
 
+  async function handleSendReply(e: React.FormEvent) {
+    e.preventDefault();
+    await sendReplyText(replyDraft);
+  }
+
   return (
     <div className="px-4 py-8 bg-[#020617] bg-[radial-gradient(ellipse_at_top,_rgba(37,99,235,0.24),transparent_60%)] sm:px-6 lg:px-8 lg:py-10">
       <div className="mx-auto flex w-full max-w-6xl flex-col rounded-[18px] border border-[#E5E7EB]/80 bg-white/95 px-4 py-8 shadow-[0_32px_80px_rgba(15,23,42,0.55)] sm:px-6 lg:px-8">
@@ -259,14 +357,19 @@ function InboxContent() {
               Inbox
             </h1>
             <p className="mt-2 text-sm text-[#475569]">
-              Recovered conversations—follow up with interested customers.
+              {isAdmin
+                ? "Internal operator view—threads across businesses."
+                : "Recovered conversations—follow up with interested customers."}
             </p>
           </div>
-          {loading && (
-            <span className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#64748B] shadow-[var(--card-shadow)]">
-              Loading…
-            </span>
-          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <OperatorWorkspacePanel />
+            {loading && (
+              <span className="rounded-full bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#64748B] shadow-[var(--card-shadow)]">
+                Loading…
+              </span>
+            )}
+          </div>
         </header>
 
         {error && (
@@ -275,30 +378,32 @@ function InboxContent() {
           </div>
         )}
 
-        {/* Summary pills */}
-        <section className="animate-fade-in-up mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryPill
-            label="Total Conversations"
-            value={totalConversations}
-            subtitle="All recovered enquiries and active threads"
-          />
-          <SummaryPill
-            label="Recovered"
-            value={recoveredCount}
-            subtitle="Leads brought back after auto-reply"
-          />
-          <SummaryPill
-            label="In Conversation"
-            value={inConversationCount}
-            subtitle="Actively messaging with your business"
-          />
-          <SummaryPill
-            label="Booked"
-            value={bookedCount}
-            subtitle="Likely converted to a recovered booking opportunity"
-            isRevenue
-          />
-        </section>
+        {/* Summary pills (customer accounts only) */}
+        {!isAdmin && (
+          <section className="animate-fade-in-up mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryPill
+              label="Total Conversations"
+              value={totalConversations}
+              subtitle="All recovered enquiries and active threads"
+            />
+            <SummaryPill
+              label="Recovered"
+              value={recoveredCount}
+              subtitle="Leads brought back after auto-reply"
+            />
+            <SummaryPill
+              label="In Conversation"
+              value={inConversationCount}
+              subtitle="Actively messaging with your business"
+            />
+            <SummaryPill
+              label="Booked"
+              value={bookedCount}
+              subtitle="Likely converted to a recovered booking opportunity"
+              isRevenue
+            />
+          </section>
+        )}
 
         {/* Status filters */}
         {conversations && conversations.length > 0 && (
@@ -600,8 +705,99 @@ function InboxContent() {
                     </section>
                   )}
 
+                  {/* AI suggestion panel */}
+                  {selectedConversation?.ai && (
+                    <section className="mt-2 mb-3 rounded-2xl border border-[#E5E7EB] bg-white p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full bg-[#EEF2FF] px-3 py-1 text-[11px] font-semibold text-[#1E3A8A]">
+                            Intent:{" "}
+                            {selectedConversation.ai.intent === "booking_request"
+                              ? "Booking request"
+                              : selectedConversation.ai.intent === "pricing_question"
+                                ? "Pricing question"
+                                : selectedConversation.ai.intent === "reschedule"
+                                  ? "Reschedule"
+                                  : selectedConversation.ai.intent === "general_question"
+                                    ? "General question"
+                                    : "Unclear"}
+                          </span>
+                          <span className="text-[11px] font-medium text-[#64748B]">
+                            Confidence:{" "}
+                            {typeof selectedConversation.ai.confidence === "number"
+                              ? `${Math.round(selectedConversation.ai.confidence * 100)}%`
+                              : "—"}
+                          </span>
+                        </div>
+
+                        <span className="text-[11px] font-medium text-[#64748B]">
+                          Next step:{" "}
+                          {selectedConversation.ai.action === "ask_followup"
+                            ? "Ask a question"
+                            : selectedConversation.ai.action === "create_booking_request_draft"
+                              ? "Create booking draft"
+                              : selectedConversation.ai.action === "send_booking_link"
+                                ? "Send booking link"
+                                : selectedConversation.ai.action === "handoff"
+                                  ? "Hand off"
+                                  : "None"}
+                        </span>
+
+                        <span className="text-[11px] font-medium text-[#0F172A]">
+                          {selectedConversation.ai.action === "handoff"
+                            ? "Hand off recommended"
+                            : (selectedConversation.ai.action === "ask_followup" ||
+                                selectedConversation.ai.action === "send_booking_link") &&
+                                typeof selectedConversation.ai.confidence === "number" &&
+                                selectedConversation.ai.confidence >= 0.85
+                              ? "Ready to send"
+                              : selectedConversation.ai.action ===
+                                    "create_booking_request_draft"
+                                ? "Draft ready"
+                                : "Needs review"}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 grid gap-1 text-xs text-[#0F172A]">
+                        <p>
+                          <span className="font-semibold">Service:</span>{" "}
+                          {selectedConversation.ai.entities?.service ?? "—"}
+                        </p>
+                        {selectedConversation.ai.entities?.customer_name && (
+                          <p>
+                            <span className="font-semibold">Customer:</span>{" "}
+                            {selectedConversation.ai.entities.customer_name}
+                          </p>
+                        )}
+                        <p>
+                          <span className="font-semibold">Preferred:</span>{" "}
+                          {[
+                            selectedConversation.ai.entities?.preferred_day,
+                            selectedConversation.ai.entities?.preferred_time,
+                          ]
+                            .filter((x) => x && String(x).trim().length > 0)
+                            .join(" · ") || "—"}
+                        </p>
+                      </div>
+
+                      {selectedConversation.booking_draft && (
+                        <div className="mt-3 rounded-xl bg-[#F9FAFB] p-2 text-xs">
+                          <p className="font-semibold text-[#0F172A]">
+                            Booking draft (not confirmed)
+                          </p>
+                          <p className="mt-1 text-[#0F172A]">
+                            {selectedConversation.booking_draft.service ?? "Service —"} •{" "}
+                            {selectedConversation.booking_draft.preferred_day ??
+                              selectedConversation.booking_draft.preferred_time ??
+                              "Time —"}
+                          </p>
+                        </div>
+                      )}
+                    </section>
+                  )}
+
                   <div className="mt-4 max-h-[420px] space-y-4 overflow-y-auto rounded-2xl bg-[#F9FAFB] px-3 py-3 pr-1 sm:mt-5 sm:px-4 sm:py-4">
-                    {selectedConversation.messages.map((msg) => {
+                    {(selectedConversation.messages ?? []).map((msg) => {
                       const isOutbound = msg.direction === "outbound";
                       const bubbleBase =
                         "inline-block max-w-[75%] rounded-2xl border px-3.5 py-2.5 text-sm shadow-sm text-center";
@@ -619,13 +815,13 @@ function InboxContent() {
                               isOutbound ? "items-end" : "items-start"
                             }`}
                           >
-                            <p className="text-[11px] font-semibold text-[#6B7280]">
+                            <p className="text-center text-[11px] font-semibold text-[#6B7280]">
                               {isOutbound
                                 ? "You"
                                 : selectedConversation.contact_label || "Customer"}
                             </p>
                             <div className={bubbleBase + " " + bubbleColors}>
-                              <p className="whitespace-pre-wrap">
+                              <p className="whitespace-pre-wrap text-center">
                                 {msg.body ||
                                   (isOutbound
                                     ? "Message sent"
@@ -649,6 +845,120 @@ function InboxContent() {
                       {replyError && (
                         <p className="mb-2 text-xs text-red-600">{replyError}</p>
                       )}
+                      {selectedConversation?.ai?.reply && (
+                        <p className="mb-2 text-xs text-[#64748B]">
+                          AI suggested reply (editable below)
+                        </p>
+                      )}
+                      {selectedConversation?.ai && (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReplyDraft(selectedConversation.ai!.reply);
+                              setReplyError(null);
+                            }}
+                            className="rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-[11px] font-medium text-[#1E3A8A] shadow-sm hover:bg-[#EFF6FF]"
+                          >
+                            Use AI reply
+                          </button>
+
+                          {(selectedConversation.ai.action ===
+                            "ask_followup" ||
+                            selectedConversation.ai.action ===
+                              "send_booking_link") && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!selectedConversation.ai?.reply) return;
+                                await sendReplyText(selectedConversation.ai.reply);
+                              }}
+                              disabled={sendingReply}
+                              className="rounded-full bg-[#1E3A8A] px-3 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Send AI reply
+                            </button>
+                          )}
+
+                          {selectedConversation.ai.action ===
+                            "create_booking_request_draft" &&
+                            isMetaChannel && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    const params = new URLSearchParams();
+                                    if (selectedConversation?.contact_id) {
+                                      params.set(
+                                        "contactId",
+                                        selectedConversation.contact_id,
+                                      );
+                                    }
+                                    if (selectedConversation?.conversation_id) {
+                                      params.set(
+                                        "conversationId",
+                                        selectedConversation.conversation_id,
+                                      );
+                                    }
+                                    if (selectedConversation?.channel) {
+                                      params.set("source", selectedConversation.channel);
+                                    }
+                                    const res = await fetch(
+                                      `/api/inbox/meta/booking-link?${params.toString()}`,
+                                    );
+                                    if (!res.ok) return;
+                                    const data = (await res.json()) as {
+                                      booking_link?: string;
+                                    };
+                                    const baseLink =
+                                      (data.booking_link as string | undefined) ??
+                                      "";
+                                    if (!baseLink) return;
+                                    setReplyDraft((prev) =>
+                                      prev ? `${prev} ${baseLink}` : baseLink,
+                                    );
+                                  } catch {
+                                    // ignore
+                                  }
+                                }}
+                                disabled={sendingReply}
+                                className="rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-[11px] font-medium text-[#1E3A8A] shadow-sm hover:bg-[#EFF6FF] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Insert booking link
+                              </button>
+                            )}
+
+                          {selectedConversation.ai.action === "handoff" && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  if (!selectedConversation?.contact_id) return;
+                                  await fetch(
+                                    `/api/contacts/${encodeURIComponent(
+                                      selectedConversation.contact_id,
+                                    )}`,
+                                    {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        status: "waiting_for_customer",
+                                        notes:
+                                          "AI handoff recommended. Review and respond.",
+                                      }),
+                                    },
+                                  );
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                              className="rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-[11px] font-medium text-[#1E3A8A] shadow-sm hover:bg-[#EFF6FF]"
+                            >
+                              Mark for human follow-up
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <div className="flex gap-2">
                           <textarea
                           rows={2}
@@ -663,47 +973,6 @@ function InboxContent() {
                           disabled={sendingReply}
                         />
                         <div className="flex flex-col items-end gap-1">
-                          {isWhatsApp && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  const params = new URLSearchParams();
-                                  if (selectedConversation?.contact_id) {
-                                    // Use contact_id as the canonical identifier for attribution.
-                                    params.set("contactId", selectedConversation.contact_id);
-                                  }
-                                  if (selectedConversation?.conversation_id) {
-                                    params.set(
-                                      "conversationId",
-                                      selectedConversation.conversation_id,
-                                    );
-                                  }
-
-                                  const res = await fetch(
-                                    `/api/inbox/whatsapp/booking-link?${params.toString()}`,
-                                  );
-                                  if (!res.ok) return;
-                                  const data = (await res.json()) as {
-                                    booking_link?: string;
-                                  };
-                                  const baseLink =
-                                    (data.booking_link as string | undefined) ?? "";
-                                  if (!baseLink) return;
-                                  setReplyDraft((prev) =>
-                                    prev
-                                      ? `${prev} ${baseLink}`
-                                      : baseLink,
-                                  );
-                                } catch {
-                                  // silently ignore; keep UX simple
-                                }
-                              }}
-                              className="mb-1 rounded-full border border-[#E5E7EB] bg-white px-3 py-1 text-[11px] font-medium text-[#1E3A8A] shadow-sm hover:bg-[#EFF6FF]"
-                            >
-                              Insert booking link
-                            </button>
-                          )}
                           <button
                             type="submit"
                             disabled={!replyDraft.trim() || sendingReply}

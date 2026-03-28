@@ -3,6 +3,8 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { getProfileRole } from '@/lib/client-profile-role';
+import { sanitizeAuthCallbackNext } from '@/lib/internal-operator';
 
 const loadingFallback = (
   <div className="flex min-h-screen items-center justify-center bg-[#020617] px-4">
@@ -25,23 +27,26 @@ function AuthCallbackContent() {
   const done = useRef(false);
 
   useEffect(() => {
-    const next = searchParams.get('next') || '/setup';
+    const nextRaw = searchParams.get('next') || '/setup';
     const supabase = createSupabaseBrowserClient();
 
-    const redirectToNext = () => {
+    const redirectToNext = async () => {
       if (done.current) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) return;
       done.current = true;
       setStatus('done');
+      const role = await getProfileRole(supabase, session.user.id);
+      const next = sanitizeAuthCallbackNext(nextRaw, role);
       router.replace(next);
     };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) redirectToNext();
+      if (session) void redirectToNext();
     });
 
-    const timer = setTimeout(async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) redirectToNext();
+    const timer = setTimeout(() => {
+      void redirectToNext();
     }, 500);
 
     const fallback = setTimeout(() => {

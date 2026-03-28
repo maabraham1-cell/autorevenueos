@@ -3,6 +3,8 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { sendEmail } from "@/lib/email";
+import { normalizeWebchatPayload } from "@/lib/messaging/normalize";
+import { handleInboundMessage } from "@/lib/messaging/handle-inbound-message";
 
 type WebsiteMessage = {
   id: string;
@@ -134,92 +136,44 @@ export async function POST(request: NextRequest) {
   }
 
   const text = message.slice(0, 2000);
+  const normalized = normalizeWebchatPayload({
+    visitorId,
+    textBody: text,
+    displayName: "Website visitor",
+    metadata: { visitorId },
+  });
 
-  // Find or create contact for this visitor
-  let existingContact: { id: string } | null = null;
-  const { data: byChannelExternalId, error: contactLookupError } = await supabase
-    .from("contacts")
-    .select("id")
-    .eq("business_id", business.id)
-    .eq("channel", CHANNEL)
-    .eq("external_id", visitorId)
-    .maybeSingle();
-  existingContact = byChannelExternalId;
-  if (!existingContact) {
-    const { data: byExternalIdOnly } = await supabase
-      .from("contacts")
-      .select("id")
-      .eq("business_id", business.id)
-      .eq("external_id", visitorId)
-      .maybeSingle();
-    existingContact = byExternalIdOnly;
-  }
+  const result = await handleInboundMessage({
+    businessId: business.id as string,
+    channel: normalized.channel,
+    externalMessageId: normalized.externalMessageId,
+    externalContactId: normalized.externalContactId,
+    phone: normalized.phone,
+    displayName: normalized.displayName,
+    textBody: normalized.textBody,
+    metadata: normalized.metadata,
+  });
 
-  if (contactLookupError) {
-    console.error(
-      "[website chat] contact lookup (POST) error:",
-      contactLookupError.message,
-    );
-    return NextResponse.json(
-      { error: "Failed to create message" },
-      { status: 500 },
-    );
-  }
-
-  let contactId = existingContact?.id as string | undefined;
-
-  if (!contactId) {
-    const { data: newContact, error: createError } = await supabase
-      .from("contacts")
-      .insert({
-        business_id: business.id,
-        channel: CHANNEL,
-        external_id: visitorId,
-        name: "Website visitor",
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (createError || !newContact) {
-      console.error(
-        "[website chat] contact create error:",
-        createError?.message,
-      );
-      return NextResponse.json(
-        { error: "Failed to create contact" },
-        { status: 500 },
-      );
-    }
-
-    contactId = newContact.id as string;
-  }
-
-  const { data: inserted, error: insertError } = await supabase
-    .from("messages")
-      .insert({
-        business_id: business.id,
-        contact_id: contactId,
-        channel: CHANNEL,
-        direction: "inbound",
-        body: text,
-        status: "received",
-      })
-    .select("*")
-    .maybeSingle();
-
-  if (insertError || !inserted) {
-    console.error("[website chat] insert message error:", insertError?.message);
+  if (!result.messageId) {
     return NextResponse.json(
       { error: "Failed to store message" },
       { status: 500 },
     );
   }
 
+  const { data: inserted } = await supabase
+    .from("messages")
+    .select("id, body, created_at")
+    .eq("id", result.messageId)
+    .maybeSingle();
+
   const shaped: WebsiteMessage = {
-    id: String(inserted.id),
+    id: String(result.messageId),
     direction: "inbound",
-    body: (inserted.body as string | null) ?? null,
-    created_at: inserted.created_at as string,
+    body: ((inserted as any)?.body as string | null) ?? text,
+    created_at:
+      ((inserted as any)?.created_at as string | undefined) ??
+      new Date().toISOString(),
   };
 
   // Notify admin when website chat hits the inbox (profile_admin notification).

@@ -6,7 +6,8 @@ import { confirmSetupIntentAndActivate } from "@/lib/stripe-billing";
  * POST /api/billing/confirm-setup
  * Call after the client has confirmed the SetupIntent (card saved).
  * Body: { setup_intent_id: string }
- * Sets default payment method on the Stripe customer and business activation_status = active.
+ * Verifies SetupIntent, sets default payment method, provisions Twilio recovery number,
+ * and sets activation_status = active only when billing + provisioning both succeed.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -34,15 +35,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await confirmSetupIntentAndActivate(setupIntentId, business.id);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
+      (request.nextUrl ? `${request.nextUrl.protocol}//${request.nextUrl.host}` : "");
+
+    const result = await confirmSetupIntentAndActivate(setupIntentId, business.id, baseUrl);
+
     if (!result.ok) {
+      const status =
+        result.phase === "billing_db" || result.phase === "finalize" || result.phase === "config"
+          ? 500
+          : 400;
       return NextResponse.json(
-        { error: result.error },
-        { status: 400 }
+        { error: result.error, phase: result.phase },
+        { status }
       );
     }
 
-    return NextResponse.json({ success: true, activated: true });
+    if (result.fullyActivated) {
+      return NextResponse.json({
+        success: true,
+        fullyActivated: true,
+        activation_status: "active",
+        billing_status: "ready",
+        phone_recovery_status: "provisioned",
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      fullyActivated: false,
+      activation_status: "billing_ready",
+      billing_status: "ready",
+      phone_recovery_status: "failed",
+      twilio_provisioning_error: result.twilio_provisioning_error,
+    });
   } catch (e) {
     console.error("[billing/confirm-setup] unexpected error:", e);
     return NextResponse.json(

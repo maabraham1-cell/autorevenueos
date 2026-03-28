@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
+import { isAdminRole } from "@/lib/roles";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { provisionNumberForBusiness } from "@/lib/twilio-number";
 
@@ -11,10 +12,17 @@ import { provisionNumberForBusiness } from "@/lib/twilio-number";
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user, business } = await getCurrentUserAndBusiness(request);
+    const { user, business, role } = await getCurrentUserAndBusiness(request);
 
     if (!user) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    if (isAdminRole(role)) {
+      return NextResponse.json(
+        { error: "Not available for internal admin account." },
+        { status: 403 },
+      );
     }
 
     if (!business) {
@@ -24,11 +32,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const activationStatus = (business as { activation_status?: string }).activation_status;
-    if (activationStatus !== "active") {
+    const billingStatus = (business as { billing_status?: string }).billing_status;
+    if (billingStatus !== "ready") {
       return NextResponse.json(
         {
-          error: "Add your card to activate AutoRevenueOS before enabling Phone Recovery.",
+          error: "Add your card (billing setup) before enabling Phone Recovery.",
           code: "PAYMENT_REQUIRED",
         },
         { status: 402 }
@@ -55,11 +63,25 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
+      if (result.code === "PROVISIONING_BUSY" || result.persistFailure === false) {
+        const status = result.code === "PROVISIONING_BUSY" ? 409 : 400;
+        return NextResponse.json(
+          {
+            error: result.error,
+            code: result.code === "PROVISIONING_BUSY" ? "PROVISIONING_IN_PROGRESS" : result.code ?? "PROVISION_FAILED",
+          },
+          { status }
+        );
+      }
+
       const db = getSupabaseAdmin();
       if (db) {
         await db
           .from("businesses")
-          .update({ twilio_provisioning_error: result.error.slice(0, 1000) })
+          .update({
+            twilio_provisioning_error: result.error.slice(0, 1000),
+            phone_recovery_status: "failed",
+          })
           .eq("id", businessId);
       }
       return NextResponse.json(
@@ -72,7 +94,10 @@ export async function POST(request: NextRequest) {
     if (db) {
       await db
         .from("businesses")
-        .update({ twilio_provisioning_error: null })
+        .update({
+          twilio_provisioning_error: null,
+          activation_status: "active",
+        })
         .eq("id", businessId);
     }
 

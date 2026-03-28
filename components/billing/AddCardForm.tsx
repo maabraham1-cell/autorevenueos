@@ -8,6 +8,11 @@ const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
   : null;
 
+export type AddCardSuccessPayload = {
+  fullyActivated: boolean;
+  twilioProvisioningError?: string;
+};
+
 function AddCardFormInner({
   clientSecret,
   onSuccess,
@@ -15,13 +20,14 @@ function AddCardFormInner({
   returnPath = '/settings',
 }: {
   clientSecret: string;
-  onSuccess: () => void;
+  onSuccess: (payload: AddCardSuccessPayload) => void;
   onCancel: () => void;
   returnPath?: string;
 }) {
   const stripe = useStripe();
   const elements = useElements();
   const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState<'idle' | 'payment' | 'provision'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,6 +35,7 @@ function AddCardFormInner({
     if (!stripe || !elements) return;
     setError(null);
     setLoading(true);
+    setPhase('idle');
     try {
       const result = await stripe.confirmSetup({
         elements,
@@ -42,11 +49,11 @@ function AddCardFormInner({
       });
       if (result.error) {
         setError(result.error.message ?? 'Payment failed');
-        setLoading(false);
         return;
       }
       const setupIntent = (result as { setupIntent?: { status: string; id: string } }).setupIntent;
       if (setupIntent?.status === 'succeeded' && setupIntent.id) {
+        setPhase('provision');
         const res = await fetch('/api/billing/confirm-setup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -54,16 +61,31 @@ function AddCardFormInner({
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
-          setError(json?.error ?? 'Failed to activate');
-          setLoading(false);
+          setError(json?.error ?? 'Failed to complete activation');
           return;
         }
-        onSuccess();
+        if (json?.success && json?.fullyActivated === false) {
+          onSuccess({
+            fullyActivated: false,
+            twilioProvisioningError:
+              typeof json.twilio_provisioning_error === 'string'
+                ? json.twilio_provisioning_error
+                : undefined,
+          });
+          return;
+        }
+        if (json?.success && json?.fullyActivated === true) {
+          onSuccess({ fullyActivated: true });
+          return;
+        }
+        setError('Unexpected response from server');
+        return;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
+      setPhase('idle');
     }
   };
 
@@ -74,6 +96,13 @@ function AddCardFormInner({
       </p>
     );
   }
+
+  const loadingLabel =
+    phase === 'provision'
+      ? 'Provisioning phone recovery number…'
+      : phase === 'payment'
+        ? 'Saving payment method…'
+        : 'Saving…';
 
   return (
     <form onSubmit={handleSubmit} className="mt-4 space-y-4">
@@ -87,7 +116,7 @@ function AddCardFormInner({
           disabled={!stripe || loading}
           className="rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
         >
-          {loading ? 'Saving…' : 'Save card and activate'}
+          {loading ? loadingLabel : 'Save card and activate'}
         </button>
         <button
           type="button"
@@ -98,6 +127,11 @@ function AddCardFormInner({
           Cancel
         </button>
       </div>
+      {loading && (
+        <p className="text-xs text-[#64748B]">
+          We save your card first, then provision your dedicated phone recovery number. This can take a few seconds.
+        </p>
+      )}
     </form>
   );
 }
@@ -109,7 +143,7 @@ export default function AddCardForm({
   returnPath,
 }: {
   clientSecret: string;
-  onSuccess: () => void;
+  onSuccess: (payload: AddCardSuccessPayload) => void;
   onCancel: () => void;
   returnPath?: string;
 }) {

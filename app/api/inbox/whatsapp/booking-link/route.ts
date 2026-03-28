@@ -20,8 +20,18 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const contactId = searchParams.get("contactId") ?? searchParams.get("conversationId");
+    const rawContactId = searchParams.get("contactId");
+    const rawConversationId = searchParams.get("conversationId");
+    const contactId =
+      rawContactId ?? rawConversationId ?? null; // legacy fallback
     const missedCallId = searchParams.get("missedCallId");
+    const conversationId = rawConversationId ?? null;
+    const sourceParam =
+      searchParams.get("source")?.toString().trim() || "whatsapp";
+    const source =
+      sourceParam === "messenger" || sourceParam === "instagram"
+        ? sourceParam
+        : "whatsapp";
 
     const bookingLinkRaw = (business as any).booking_link as string | null | undefined;
     if (!bookingLinkRaw) {
@@ -33,8 +43,9 @@ export async function GET(request: NextRequest) {
 
     const attributed = buildWhatsAppBookingLink({
       bookingLink: bookingLinkRaw,
-      source: "whatsapp",
+      source,
       contactId,
+      conversationId,
       missedCallId,
     });
 

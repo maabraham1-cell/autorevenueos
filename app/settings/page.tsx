@@ -53,6 +53,8 @@ type SettingsData = {
   acuity_api_key?: string;
   square_merchant_id?: string;
   activation_status?: string;
+  billing_status?: string;
+  phone_recovery_status?: string;
   twilio_provisioning_error?: string;
 };
 
@@ -157,6 +159,8 @@ function SettingsPageContent() {
         acuity_api_key: settings.acuity_api_key ?? '',
         square_merchant_id: settings.square_merchant_id ?? '',
         activation_status: settings.activation_status ?? 'payment_required',
+        billing_status: settings.billing_status ?? 'pending',
+        phone_recovery_status: settings.phone_recovery_status ?? 'none',
         twilio_provisioning_error: settings.twilio_provisioning_error ?? '',
       });
       setLocationOther(isLocInList ? '' : loc);
@@ -607,62 +611,124 @@ function SettingsPageContent() {
         <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
           <h2 className="text-sm font-semibold text-[#0F172A]">Billing &amp; activation</h2>
           <p className="mt-1 text-xs text-[#64748B]">
-            Add your card to activate AutoRevenueOS. You are only charged £3 when a <strong>confirmed booking</strong> is received from your booking system. Messages, leads and enquiries never trigger charges.
+            Save a card for usage-based billing (£3 per <strong>confirmed booking</strong> from your scheduling system). We then provision your dedicated phone recovery number—activation is complete only when both succeed. Messages and leads do not trigger charges.
           </p>
             {(form.activation_status ?? data?.activation_status ?? 'payment_required') === 'active' ? (
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800">
-                  Card on file • AutoRevenueOS is active
+                  Fully activated • Billing on file • Phone recovery number provisioned
                 </span>
               </div>
             ) : (
               <>
-                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <p className="font-medium">Add your card to activate AutoRevenueOS</p>
-                  <p className="mt-1 text-amber-800">Phone recovery and confirmed booking billing are available only after a payment method is on file.</p>
-                </div>
-                {billingSetupError && (
-                  <p className="mt-2 text-sm text-red-600" role="alert">{billingSetupError}</p>
-                )}
-                {!billingSetupSecret ? (
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setBillingSetupError(null);
-                        setBillingSetupLoading(true);
-                        try {
-                          const res = await fetch('/api/billing/setup-intent', { method: 'POST' });
-                          const json = await res.json().catch(() => ({}));
-                          if (!res.ok) {
-                            setBillingSetupError(json?.error ?? 'Failed to start setup');
-                            return;
-                          }
-                          setBillingSetupSecret(json.clientSecret);
-                        } catch {
-                          setBillingSetupError('Something went wrong. Please try again.');
-                        } finally {
-                          setBillingSetupLoading(false);
-                        }
-                      }}
-                      disabled={billingSetupLoading}
-                      className="rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
-                    >
-                      {billingSetupLoading ? 'Loading…' : 'Add your card'}
-                    </button>
+                {(form.activation_status ?? data?.activation_status ?? '') === 'billing_ready' && (
+                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <p className="font-medium">Activation incomplete</p>
+                    <p className="mt-1 text-amber-800">
+                      Your payment method was saved, but we could not provision your phone recovery number yet. Use Phone Recovery below to retry, or contact support if this persists.
+                    </p>
+                    {(form.twilio_provisioning_error ?? data?.twilio_provisioning_error ?? '').trim() ? (
+                      <p className="mt-2 text-xs text-amber-900/90 font-mono">
+                        {(form.twilio_provisioning_error ?? data?.twilio_provisioning_error ?? '').trim()}
+                      </p>
+                    ) : null}
                   </div>
+                )}
+                {(form.activation_status ?? data?.activation_status ?? 'payment_required') !== 'billing_ready' && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-medium">Add your card to start activation</p>
+                  <p className="mt-1 text-amber-800">We save your card, then automatically provision your phone recovery number. Confirmed booking billing applies once your card is on file.</p>
+                </div>
+                )}
+                {(form.billing_status ?? data?.billing_status) !== 'ready' ? (
+                  <>
+                    {billingSetupError && (
+                      <p className="mt-2 text-sm text-red-600" role="alert">{billingSetupError}</p>
+                    )}
+                    {!billingSetupSecret ? (
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setBillingSetupError(null);
+                            setBillingSetupLoading(true);
+                            try {
+                              const res = await fetch('/api/billing/setup-intent', { method: 'POST' });
+                              const json = await res.json().catch(() => ({}));
+                              if (!res.ok) {
+                                setBillingSetupError(json?.error ?? 'Failed to start setup');
+                                return;
+                              }
+                              setBillingSetupSecret(json.clientSecret);
+                            } catch {
+                              setBillingSetupError('Something went wrong. Please try again.');
+                            } finally {
+                              setBillingSetupLoading(false);
+                            }
+                          }}
+                          disabled={billingSetupLoading}
+                          className="rounded-lg bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#2563EB] disabled:opacity-60"
+                        >
+                          {billingSetupLoading ? 'Loading…' : 'Add your card'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-4">
+                        <AddCardForm
+                          clientSecret={billingSetupSecret}
+                          onSuccess={(payload) => {
+                            setBillingSetupSecret(null);
+                            void loadSettings();
+                            if (payload.fullyActivated) {
+                              setForm((f) => ({
+                                ...f,
+                                activation_status: 'active',
+                                billing_status: 'ready',
+                                phone_recovery_status: 'provisioned',
+                                twilio_provisioning_error: '',
+                              }));
+                              setData((d) =>
+                                d
+                                  ? {
+                                      ...d,
+                                      activation_status: 'active',
+                                      billing_status: 'ready',
+                                      phone_recovery_status: 'provisioned',
+                                      twilio_provisioning_error: '',
+                                    }
+                                  : d
+                              );
+                            } else {
+                              setForm((f) => ({
+                                ...f,
+                                activation_status: 'billing_ready',
+                                billing_status: 'ready',
+                                phone_recovery_status: 'failed',
+                                twilio_provisioning_error: payload.twilioProvisioningError ?? f.twilio_provisioning_error ?? '',
+                              }));
+                              setData((d) =>
+                                d
+                                  ? {
+                                      ...d,
+                                      activation_status: 'billing_ready',
+                                      billing_status: 'ready',
+                                      phone_recovery_status: 'failed',
+                                      twilio_provisioning_error: payload.twilioProvisioningError ?? d.twilio_provisioning_error ?? '',
+                                    }
+                                  : d
+                              );
+                            }
+                          }}
+                          onCancel={() => setBillingSetupSecret(null)}
+                        />
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <div className="mt-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-4">
-                    <AddCardForm
-                      clientSecret={billingSetupSecret}
-                      onSuccess={() => {
-                        setBillingSetupSecret(null);
-                        loadSettings();
-                        setForm((f) => ({ ...f, activation_status: 'active' }));
-                        setData((d) => (d ? { ...d, activation_status: 'active' } : d));
-                      }}
-                      onCancel={() => setBillingSetupSecret(null)}
-                    />
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-sm font-medium text-sky-900">
+                      Payment method on file
+                    </span>
                   </div>
                 )}
               </>
@@ -715,7 +781,7 @@ function SettingsPageContent() {
         <section className="card-base animate-fade-in-up mt-6 rounded-[14px] p-6">
           <h2 className="text-sm font-semibold text-[#0F172A]">Phone Recovery</h2>
           <p className="mt-1 text-xs text-[#64748B]">
-            A dedicated number for missed-call detection and recovery SMS. Forward your business calls to it so we can capture missed calls and send booking links. Setup success does not assign a number — enable here after adding a card.
+            A dedicated number for missed-call detection and recovery SMS. After you save a card, we try to provision this number automatically; if that fails, use Retry here. Forward your business calls to this number so we can capture missed calls and send booking links.
           </p>
           {noBusiness || !data?.id ? (
             <>
@@ -725,7 +791,7 @@ function SettingsPageContent() {
           ) : (() => {
             const hasNumber = Boolean((form.twilio_phone_number ?? '').trim());
             const persistedError = (form.twilio_provisioning_error ?? data?.twilio_provisioning_error ?? '').trim();
-            const isBillingActive = (form.activation_status ?? data?.activation_status) === 'active';
+            const isBillingActive = (form.billing_status ?? data?.billing_status) === 'ready';
             const status: 'active' | 'pending' | 'failed' | 'inactive' =
               hasNumber ? 'active' : provisionPhoneLoading ? 'pending' : persistedError ? 'failed' : 'inactive';
             return (

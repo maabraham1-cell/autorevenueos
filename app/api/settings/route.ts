@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
 import { normalizePhone } from "@/lib/phone";
+import { isAdminRole } from "@/lib/roles";
+import { supabase } from "@/lib/supabase";
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, business } = await getCurrentUserAndBusiness(request);
+    const { user, business, role } = await getCurrentUserAndBusiness(request);
 
     if (!user) {
       return NextResponse.json(
         { error: "Not authenticated" },
         { status: 401 },
+      );
+    }
+
+    if (isAdminRole(role)) {
+      return NextResponse.json(
+        { error: "Not available for internal admin account." },
+        { status: 403 },
       );
     }
 
@@ -48,6 +56,8 @@ export async function GET(request: NextRequest) {
       acuity_api_key: ((business as any).acuity_api_key as string) ?? "",
       square_merchant_id: ((business as any).square_merchant_id as string) ?? "",
       activation_status: ((business as any).activation_status as string) ?? "payment_required",
+      billing_status: ((business as any).billing_status as string) ?? "pending",
+      phone_recovery_status: ((business as any).phone_recovery_status as string) ?? "none",
       twilio_provisioning_error: ((business as any).twilio_provisioning_error as string) ?? "",
       business_mobile: ((business as any).business_mobile as string) ?? "",
     });
@@ -62,12 +72,19 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { user, business } = await getCurrentUserAndBusiness(request);
+    const { user, business, role } = await getCurrentUserAndBusiness(request);
 
     if (!user) {
       return NextResponse.json(
         { error: "Not authenticated" },
         { status: 401 },
+      );
+    }
+
+    if (isAdminRole(role)) {
+      return NextResponse.json(
+        { error: "Not available for internal admin account." },
+        { status: 403 },
       );
     }
 

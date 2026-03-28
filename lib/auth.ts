@@ -5,6 +5,7 @@ import {
   createServerClient,
   type CookieOptions,
 } from "@supabase/auth-helpers-nextjs";
+import { isAdminRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
@@ -31,7 +32,12 @@ export type BusinessRow = {
  * Lazily creates a business + profile if the user has none (post signup).
  * Uses the same session-aware client for all DB ops so RLS sees the user.
  */
-export type ProfileRole = "platform_admin" | "owner" | "member";
+export type ProfileRole =
+  | "admin"
+  | "customer"
+  | "platform_admin"
+  | "owner"
+  | "member";
 
 export async function getCurrentUserAndBusiness(
   request: NextRequest
@@ -73,6 +79,14 @@ export async function getCurrentUserAndBusiness(
   }
 
   let businessId: string | null = profile?.business_id ?? null;
+
+  if (profile && isAdminRole(profile.role as string)) {
+    return {
+      user,
+      business: null,
+      role: (profile.role as ProfileRole) ?? "admin",
+    };
+  }
 
   if (!businessId) {
     // Use service role for bootstrap when set so RLS doesn't block new users

@@ -4,6 +4,7 @@ import {
   createServerClient,
   type CookieOptions,
 } from "@supabase/auth-helpers-nextjs";
+import { isAdminRole } from "@/lib/roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
@@ -13,11 +14,13 @@ const protectedPrefixes = [
   "/inbox",
   "/recoveries",
   "/settings",
+  "/operator",
   "/admin",
   "/api/dashboard",
   "/api/inbox",
   "/api/recoveries",
   "/api/settings",
+  "/api/operator",
   "/api/booking-integrations",
   "/api/billing/retry",
   "/api/setup",
@@ -42,8 +45,9 @@ function isLocalHost(req: NextRequest): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Maintenance mode: show offline page in production; localhost always works
-  const maintenance = process.env.MAINTENANCE_MODE === "1" || process.env.MAINTENANCE_MODE === "true";
+  const maintenance =
+    process.env.MAINTENANCE_MODE === "1" ||
+    process.env.MAINTENANCE_MODE === "true";
   if (maintenance && !isLocalHost(req) && pathname !== "/maintenance") {
     return NextResponse.rewrite(new URL("/maintenance", req.url));
   }
@@ -82,18 +86,65 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isAdminPath(pathname)) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
 
-    const role = (profile?.role as string) ?? "owner";
-    if (role !== "platform_admin") {
+  const role = (profile?.role as string) ?? "owner";
+  const adminUser = isAdminRole(role);
+
+  if (adminUser) {
+    const operatorForbiddenPages = [
+      "/dashboard",
+      "/settings",
+      "/recoveries",
+      "/setup",
+    ];
+    for (const prefix of operatorForbiddenPages) {
+      if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+        return NextResponse.redirect(new URL("/operator", req.url));
+      }
+    }
+
+    const operatorForbiddenApis = [
+      "/api/dashboard",
+      "/api/recoveries",
+      "/api/setup",
+      "/api/booking-integrations",
+      "/api/billing",
+      "/api/test",
+    ];
+    for (const prefix of operatorForbiddenApis) {
+      if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+        return NextResponse.json(
+          { error: "Not available for internal admin account." },
+          { status: 403 },
+        );
+      }
+    }
+  }
+
+  if (!adminUser) {
+    if (
+      pathname === "/operator" ||
+      pathname.startsWith("/operator/") ||
+      pathname === "/api/operator" ||
+      pathname.startsWith("/api/operator/")
+    ) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+  }
+
+  if (isAdminPath(pathname)) {
+    if (!adminUser) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json(
-          { error: "Forbidden. Platform admin access required." },
+          { error: "Forbidden. Internal admin access required." },
           { status: 403 },
         );
       }
@@ -107,4 +158,3 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
-

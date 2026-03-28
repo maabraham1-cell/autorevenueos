@@ -55,6 +55,9 @@ Before deploying AutoRevenueOS, make sure the following environment variables ar
 
 ### Optional
 
+- **`NEXT_PUBLIC_APP_URL`** (exposed to client)  
+  - **Recommended in production.** Canonical public site URL with no trailing slash, e.g. `https://www.autorevenueos.com`. Used for Supabase **password reset** and **signup confirmation** links so emails point at your live domain (avoids broken links if the user opened login from a preview URL or non-canonical host).
+
 - **`NEXT_PUBLIC_GA_MEASUREMENT_ID`** (exposed to client)  
   - Google Analytics 4 measurement ID (e.g. `G-XXXXXXXXXX`).  
   - If set, GA4 is loaded only on the marketing site and login page when the user has accepted cookies; IP is anonymised and only a minimal set of events is tracked.

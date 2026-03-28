@@ -3,8 +3,8 @@ import { supabase } from "@/lib/supabase";
 import { verifyTwilioRequest } from "@/lib/twilioWebhook";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { normalizePhone } from "@/lib/phone";
-
-const SMS_CHANNEL = "sms";
+import { handleInboundMessage } from "@/lib/messaging/handle-inbound-message";
+import { normalizeSMSPayload } from "@/lib/messaging/normalize";
 
 async function getBusinessForTwilio(toNumber: string | null) {
   let business: any = null;
@@ -183,108 +183,35 @@ export async function POST(request: Request) {
       );
     }
 
-    let existingContact: { id: string } | null = null;
-    const { data: byExternalId } = await supabase
-      .from("contacts")
-      .select("id")
-      .eq("business_id", business.id)
-      .eq("channel", SMS_CHANNEL)
-      .eq("external_id", normalizedFrom)
-      .maybeSingle();
-    existingContact = byExternalId;
-    if (!existingContact) {
-      const { data: byPhone, error: contactError } = await supabase
-        .from("contacts")
-        .select("id")
-        .eq("business_id", business.id)
-        .eq("phone", normalizedFrom)
-        .maybeSingle();
-      if (contactError) {
-        console.error("[sms-webhook] contact lookup error:", contactError.message);
-      }
-      existingContact = byPhone;
-    }
-
-    console.log("[sms-webhook] contact lookup result:", {
-      requestId,
-      contactId: existingContact?.id ?? null,
+    const normalized = normalizeSMSPayload({
+      fromPhone: normalizedFrom,
+      messageSid: messageSid || null,
+      textBody: body,
+      metadata: {
+        From: from,
+        To: to,
+        Body: body,
+        MessageSid: messageSid || null,
+      },
     });
 
-    let contactId = existingContact?.id as string | undefined;
+    const result = await handleInboundMessage({
+      businessId: business.id as string,
+      channel: normalized.channel,
+      externalMessageId: normalized.externalMessageId,
+      externalContactId: normalized.externalContactId,
+      phone: normalized.phone,
+      displayName: normalized.displayName ?? "SMS lead",
+      textBody: normalized.textBody,
+      metadata: normalized.metadata,
+    });
 
-    if (!contactId) {
-      const { data: created, error: createError } = await supabase
-        .from("contacts")
-        .insert({
-          business_id: business.id,
-          channel: SMS_CHANNEL,
-          external_id: normalizedFrom,
-          phone: normalizedFrom,
-          name: "SMS lead",
-        })
-        .select("id")
-        .maybeSingle();
-
-      if (createError || !created) {
-        console.error(
-          "[sms-webhook] failed to create contact:",
-          createError?.message
-        );
-        finalStatus = 500;
-        return new NextResponse(
-          '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-          {
-            status: finalStatus,
-            headers: { "Content-Type": "text/xml" },
-          }
-        );
-      }
-
-      contactId = created.id as string;
-      console.log("[sms-webhook] created contact:", {
-        requestId,
-        contactId,
-      });
-    }
-
-    const insertPayload = {
-      business_id: business.id,
-      contact_id: contactId,
-      channel: "sms",
-      direction: "inbound",
-      body,
-      status: "received",
-      external_id: messageSid || null,
-    };
-
-    console.log("[sms-webhook] insert payload:", { requestId, insertPayload });
-
-    const { data: inserted, error: insertError } = await supabase
-      .from("messages")
-      .insert(insertPayload)
-      .select(
-        "id, business_id, contact_id, channel, direction, body, created_at"
-      )
-      .maybeSingle();
-
-    if (insertError || !inserted) {
-      console.error(
-        "[sms-webhook] failed to insert message:",
-        insertError?.message ?? "no row returned"
-      );
-      finalStatus = 500;
-      return new NextResponse(
-        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-        {
-          status: finalStatus,
-          headers: { "Content-Type": "text/xml" },
-        }
-      );
-    }
-
-    console.log("[sms-webhook] message insert succeeded", {
+    console.log("[sms-webhook] inbound processed", {
       requestId,
-      messageId: inserted.id,
+      deduped: result.deduped ?? false,
+      messageId: result.messageId ?? null,
+      conversationId: result.conversationId ?? null,
+      ai: result.ai ?? null,
     });
 
     // Minimal TwiML response with no auto-reply (you can add one later).

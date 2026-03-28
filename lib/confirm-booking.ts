@@ -160,16 +160,15 @@ export async function recordConfirmedBooking(
 
   const { data: business } = await db
     .from("businesses")
-    .select("stripe_customer_id, activation_status")
+    .select("stripe_customer_id, billing_status")
     .eq("id", input.business_id)
     .single();
 
   const stripeCustomerId =
     (business as { stripe_customer_id?: string } | null)?.stripe_customer_id;
-  const activationStatus = (business as { activation_status?: string } | null)?.activation_status;
+  const billingReady = (business as { billing_status?: string } | null)?.billing_status === "ready";
 
-  const isActive = activationStatus === "active";
-  if (!stripeCustomerId || !isActive) {
+  if (!stripeCustomerId || !billingReady) {
     await db
       .from("confirmed_bookings")
       .update({ billing_status: "skipped" })
@@ -181,7 +180,7 @@ export async function recordConfirmedBooking(
       "meter_skipped_no_customer",
       !stripeCustomerId
         ? "Business has no stripe_customer_id; meter not sent."
-        : "Business not active (no payment method on file); meter not sent.",
+        : "Billing not ready (no payment method on file); meter not sent.",
       {}
     );
     return { ok: true, confirmed_booking_id: row.id };

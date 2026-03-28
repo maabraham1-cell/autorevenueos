@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseAdmin, supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
 
 const LOG_PREFIX = "[contacts]";
@@ -32,7 +32,9 @@ export async function GET(
       return NextResponse.json({ error: "Missing contactId" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const db = getSupabaseAdmin() ?? supabase;
+
+    const { data, error } = await db
       .from("contacts")
       .select("id, business_id, name, phone, channel, status, notes, tags, created_at")
       .eq("id", contactId)
@@ -83,6 +85,8 @@ export async function PATCH(
       tags?: string[];
     };
 
+    const db = getSupabaseAdmin() ?? supabase;
+
     const updates: Record<string, unknown> = {};
 
     if (typeof body.name === "string") {
@@ -113,7 +117,7 @@ export async function PATCH(
       return NextResponse.json({ success: true });
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await db
       .from("contacts")
       .update(updates)
       .eq("id", contactId)

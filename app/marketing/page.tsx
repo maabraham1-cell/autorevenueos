@@ -307,38 +307,61 @@ export default function MarketingPage() {
                 Works with your existing tools
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                Calendly, Fresha, Timely, Square and more — so confirmed bookings still land where you expect.
+                Calendly, Timely, Square and more — so confirmed appointments still land where you expect.
               </p>
             </div>
           </div>
 
-          {/* Logo strip */}
+          {/* Trusted by appointment-based businesses */}
           <div className="mt-10 border-t border-[#E5E7EB] pt-8">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6B7280]">
-              Works with tools your business already uses
+              Trusted by appointment-based businesses
             </p>
-            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-4 text-xs text-[#6B7280]">
+            <h3 className="mt-2 text-lg font-semibold tracking-tight text-[#0F172A]">
+              Built for clinics, healthcare and high-value services
+            </h3>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                { src: '/integrations/fresha.svg', alt: 'Fresha logo' },
-                { src: '/integrations/timely.svg', alt: 'Timely logo' },
-                { src: '/integrations/square.svg', alt: 'Square logo' },
-                { src: '/integrations/calendly.svg', alt: 'Calendly logo' },
-                { src: '/integrations/whatsapp.svg', alt: 'WhatsApp logo' },
-                { src: '/integrations/instagram.svg', alt: 'Instagram logo' },
-              ].map((logo) => (
+                {
+                  title: 'Dental Clinics',
+                  desc: 'Recover missed-call bookings before patients move on.',
+                },
+                {
+                  title: 'Physiotherapy',
+                  desc: 'Instant follow-up for high-intent consultations.',
+                },
+                {
+                  title: 'Aesthetic Clinics',
+                  desc: 'High trust, professional next steps for every enquiry.',
+                },
+                {
+                  title: 'Private Practice',
+                  desc: 'A clean missed-call recovery flow for serious leads.',
+                },
+              ].map((item) => (
                 <div
-                  key={logo.src}
-                  className="flex items-center gap-2 rounded-xl border border-[#E5E7EB]/60 bg-white/70 px-3 py-2 shadow-sm shadow-slate-900/5"
+                  key={item.title}
+                  className="rounded-xl border border-[#E5E7EB] bg-white/70 p-4"
                 >
-                  <img
-                    src={logo.src}
-                    alt={logo.alt}
-                    className="h-7 w-7 rounded-lg bg-slate-50 object-contain"
-                    loading="lazy"
-                  />
+                  <p className="text-sm font-semibold text-[#0F172A]">
+                    {item.title}
+                  </p>
+                  <p className="mt-1 text-xs text-[#64748B]">{item.desc}</p>
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Works with your existing booking system */}
+          <div className="mt-8 border-t border-[#E5E7EB] pt-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6B7280]">
+              Works with your existing booking system
+            </p>
+            <p className="mt-2 text-sm text-[#475569] sm:text-base">
+              Connect common scheduling tools (e.g. Calendly, Timely, Square) so
+              confirmed appointments still land in the workflow you already use.
+            </p>
           </div>
         </div>
       </section>
