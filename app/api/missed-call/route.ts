@@ -6,6 +6,10 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { normalizePhone } from "@/lib/phone";
 import { buildWhatsAppBookingLink, sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import { findOrCreateConversation, touchConversation } from "@/lib/conversations";
+import {
+  isBillingOutboundBlockedError,
+  OUTBOUND_BILLING_BLOCKED_MESSAGE,
+} from "@/lib/billing-outbound-gate";
 
 const SMS_CHANNEL = "sms";
 
@@ -256,7 +260,13 @@ export async function POST(request: Request) {
       | string
       | undefined;
 
-    const { data: message, error: messageError } = await supabase
+    // Backwards-compatible insert: some environments may not have
+    // `messages.conversation_id` yet.
+    let message: any = null;
+    const {
+      data: messageAttempt,
+      error: messageAttemptError,
+    } = await supabase
       .from("messages")
       .insert({
         business_id: business.id,
@@ -269,15 +279,50 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (messageError || !message) {
-      console.error("[missed-call] message insert error:", {
-        requestId,
-        error: messageError?.message,
-      });
-      return NextResponse.json(
-        { success: false, error: "Failed to create message" },
-        { status: 500 }
-      );
+    if (messageAttemptError) {
+      const errMsg = messageAttemptError.message ?? "";
+      const missingConversationId = /conversation_id.*does not exist/i.test(errMsg);
+
+      if (!missingConversationId) {
+        console.error("[missed-call] message insert error:", {
+          requestId,
+          error: messageAttemptError.message,
+        });
+        return NextResponse.json(
+          { success: false, error: "Failed to create message" },
+          { status: 500 }
+        );
+      }
+
+      const {
+        data: legacyMessage,
+        error: legacyMessageError,
+      } = await supabase
+        .from("messages")
+        .insert({
+          business_id: business.id,
+          contact_id: contact.id,
+          channel: "sms",
+          direction: "outbound",
+          body: null,
+        })
+        .select()
+        .single();
+
+      if (legacyMessageError || !legacyMessage) {
+        console.error("[missed-call] legacy message insert error:", {
+          requestId,
+          error: legacyMessageError?.message,
+        });
+        return NextResponse.json(
+          { success: false, error: "Failed to create message" },
+          { status: 500 }
+        );
+      }
+
+      message = legacyMessage;
+    } else {
+      message = messageAttempt;
     }
 
     let sms: {
@@ -294,8 +339,17 @@ export async function POST(request: Request) {
         fromNumber: businessFromNumber,
         businessName: (business.name as string) ?? "your business",
         bookingLink: (business.booking_link as string | null) ?? null,
+        businessId: business.id as string,
+        contactId: contact.id as string,
+        explicitTestSend: process.env.ALLOW_TEST_MODE_SMS_SEND === "true",
       });
     } catch (smsError) {
+      if (isBillingOutboundBlockedError(smsError)) {
+        return NextResponse.json(
+          { success: false, error: OUTBOUND_BILLING_BLOCKED_MESSAGE },
+          { status: 402 }
+        );
+      }
       const messageText =
         smsError instanceof Error ? smsError.message : "SMS send failed";
       console.error("[missed-call] sendRecoverySms error:", {
@@ -335,32 +389,55 @@ export async function POST(request: Request) {
             `You can book here: ${waBookingLink}`,
           ].join(" ");
 
-          await sendWhatsAppTextMessage({
-            to: normalizedPhone,
-            text,
-            // Per-business overrides can be wired later; for now rely on env-level config.
-            phoneNumberId: (business as any).meta_page_id as string | undefined,
-            accessToken: (business as any).meta_page_access_token as string | undefined,
-          });
+          const recipientDigits = normalizedPhone.replace(/\D/g, "");
+          const businessMobileDigits = String(
+            (business as any).business_mobile ?? "",
+          ).replace(/\D/g, "");
+          if (
+            recipientDigits &&
+            businessMobileDigits &&
+            recipientDigits === businessMobileDigits
+          ) {
+            console.warn("[missed-call] blocked WhatsApp send to business_mobile", {
+              requestId,
+              businessId: business.id,
+              recipient_prefix: recipientDigits.slice(0, 6) + "…",
+            });
+          } else {
 
-          // Log the outbound WhatsApp message so it shows in the inbox thread.
-          // Ensure there is a WhatsApp conversation for this contact as well.
-          const waConversation = await findOrCreateConversation({
-            supabase,
-            businessId: business.id as string,
-            contactId: contact.id as string,
-            channel: "whatsapp",
-            source: "missed_call_recovery",
-            missedCallEventId: event.id as string,
-            initialMessageAt: new Date().toISOString(),
-            initialPreview: text,
-          });
+            await sendWhatsAppTextMessage({
+              to: normalizedPhone,
+              text,
+              phoneNumberId:
+                ((business as any).whatsapp_phone_number_id as string | undefined) ??
+                ((business as any).meta_page_id as string | undefined),
+              accessToken: (business as any).meta_page_access_token as string | undefined,
+              allowEnvFallback: false,
+              businessId: business.id as string,
+              contactId: contact.id as string,
+              recipientSource: "webhook.From",
+            });
 
-          const waConversationId = (waConversation && (waConversation as any).id) as
-            | string
-            | undefined;
+            // Log the outbound WhatsApp message so it shows in the inbox thread.
+            // Ensure there is a WhatsApp conversation for this contact as well.
+            const waConversation = await findOrCreateConversation({
+              supabase,
+              businessId: business.id as string,
+              contactId: contact.id as string,
+              channel: "whatsapp",
+              source: "missed_call_recovery",
+              missedCallEventId: event.id as string,
+              initialMessageAt: new Date().toISOString(),
+              initialPreview: text,
+            });
 
-          const { error: waMessageError } = await supabase.from("messages").insert({
+            const waConversationId = (waConversation && (waConversation as any).id) as
+              | string
+              | undefined;
+
+          const {
+            error: waMessageAttemptError,
+          } = await supabase.from("messages").insert({
             business_id: business.id,
             contact_id: contact.id,
             channel: "whatsapp",
@@ -369,19 +446,42 @@ export async function POST(request: Request) {
             conversation_id: waConversationId ?? null,
           });
 
-          if (waMessageError) {
-            console.error("[missed-call] WhatsApp message insert error:", {
-              requestId,
-              error: waMessageError.message,
-            });
+          if (waMessageAttemptError) {
+            const errMsg = waMessageAttemptError.message ?? "";
+            const missingConversationId = /conversation_id.*does not exist/i.test(errMsg);
+
+            if (missingConversationId) {
+              const { error: waLegacyError } = await supabase
+                .from("messages")
+                .insert({
+                  business_id: business.id,
+                  contact_id: contact.id,
+                  channel: "whatsapp",
+                  direction: "outbound",
+                  body: text,
+                });
+
+              if (waLegacyError) {
+                console.error("[missed-call] legacy WhatsApp message insert error:", {
+                  requestId,
+                  error: waLegacyError.message,
+                });
+              }
+            } else {
+              console.error("[missed-call] WhatsApp message insert error:", {
+                requestId,
+                error: waMessageAttemptError.message,
+              });
+            }
           }
-          if (waConversationId) {
-            await touchConversation({
-              supabase,
-              conversationId: waConversationId,
-              lastMessageAt: new Date().toISOString(),
-              lastMessagePreview: text,
-            });
+            if (waConversationId) {
+              await touchConversation({
+                supabase,
+                conversationId: waConversationId,
+                lastMessageAt: new Date().toISOString(),
+                lastMessagePreview: text,
+              });
+            }
           }
         }
       } catch (waError) {

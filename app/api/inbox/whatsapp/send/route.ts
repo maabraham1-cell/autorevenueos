@@ -1,6 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseAdmin, supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
+import {
+  isBillingOutboundBlockedError,
+  OUTBOUND_BILLING_BLOCKED_MESSAGE,
+} from "@/lib/billing-outbound-gate";
 import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
 import { normalizePhone } from "@/lib/phone";
 import { findOrCreateConversation, touchConversation } from "@/lib/conversations";
@@ -33,6 +37,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const db = getSupabaseAdmin() ?? supabase;
+
   const body = (await request.json().catch(() => null)) as ReplyBody | null;
   const contactId = typeof body?.contact_id === "string" ? body.contact_id.trim() : "";
   const text = typeof body?.body === "string" ? body.body.trim().slice(0, 2000) : "";
@@ -44,7 +50,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: contact, error: contactError } = await supabase
+  const { data: contact, error: contactError } = await db
     .from("contacts")
     .select("id, phone, external_id")
     .eq("id", contactId)
@@ -90,14 +96,19 @@ export async function POST(request: NextRequest) {
   const phoneNumberId = (business as any).whatsapp_phone_number_id ?? (business as any).meta_page_id;
   const sourceOfTo = contactExternalId.trim() ? "contact.external_id" : "contact.phone";
   const usingEnvPhoneNumberIdFallback = !phoneNumberId && !!process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+  const isTestMode =
+    process.env.MESSAGE_TEST_MODE === "true" || process.env.NODE_ENV !== "production";
 
   console.log(LOG_PREFIX + " sending", {
+    channel: "whatsapp",
     business_id: business.id,
     contact_id: contact.id,
     to_digits_prefix: toDigits.slice(0, 6) + "…",
-    source: sourceOfTo,
-    phone_number_id: phoneNumberId ?? "(env fallback from META_WHATSAPP_PHONE_NUMBER_ID)",
+    recipient_source: sourceOfTo,
+    phone_number_id_used:
+      phoneNumberId ?? "(env fallback from META_WHATSAPP_PHONE_NUMBER_ID)",
     is_env_phone_id_fallback: usingEnvPhoneNumberIdFallback,
+    is_test_mode: isTestMode,
   });
 
   try {
@@ -106,8 +117,16 @@ export async function POST(request: NextRequest) {
       text,
       phoneNumberId: phoneNumberId as string | undefined,
       accessToken: (business as any).meta_page_access_token as string | undefined,
+      allowEnvFallback: false,
+      businessId: business.id as string,
+      contactId: contact.id as string,
+      recipientSource: sourceOfTo,
+      isTestMode,
     });
   } catch (e) {
+    if (isBillingOutboundBlockedError(e)) {
+      return NextResponse.json({ error: OUTBOUND_BILLING_BLOCKED_MESSAGE }, { status: 402 });
+    }
     console.error(LOG_PREFIX + " sendWhatsAppTextMessage error", { error: e, contact_id: contact.id, to_digits_prefix: toDigits.slice(0, 6) + "…" });
     return NextResponse.json(
       { error: "Failed to send WhatsApp message" },
@@ -117,7 +136,7 @@ export async function POST(request: NextRequest) {
 
   // Store outbound message so it appears immediately in the inbox thread.
   // Attach to an existing open conversation if possible.
-  const convClient = supabase;
+  const convClient = db;
   let conversationId: string | null = null;
   try {
     const conv = await findOrCreateConversation({
@@ -138,7 +157,13 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const { data: inserted, error: insertError } = await supabase
+  // Backwards-compatible insert: some environments may not have
+  // `messages.conversation_id` yet.
+  let inserted: any = null;
+  const {
+    data: insertedAttempt,
+    error: insertAttemptError,
+  } = await db
     .from("messages")
     .insert({
       business_id: business.id,
@@ -152,14 +177,45 @@ export async function POST(request: NextRequest) {
     .select("id, body, created_at")
     .single();
 
-  if (insertError || !inserted) {
-    console.error(LOG_PREFIX + " insert error:", insertError?.message);
-    // At this point the message was already sent to WhatsApp; we still return 200
-    // so the UI does not retry blindly. The history will catch up on next poll.
-    return NextResponse.json(
-      { error: "WhatsApp message sent but failed to log in inbox" },
-      { status: 200 },
-    );
+  if (insertAttemptError) {
+    const errMsg = insertAttemptError.message ?? "";
+    const missingConversationId = /conversation_id.*does not exist/i.test(errMsg);
+
+    if (!missingConversationId) {
+      console.error(LOG_PREFIX + " insert error:", insertAttemptError?.message);
+      return NextResponse.json(
+        { error: "WhatsApp message sent but failed to log in inbox" },
+        { status: 200 },
+      );
+    }
+
+    const {
+      data: insertedLegacy,
+      error: legacyInsertError,
+    } = await db
+      .from("messages")
+      .insert({
+        business_id: business.id,
+        contact_id: contact.id,
+        channel: CHANNEL,
+        direction: "outbound",
+        body: text,
+        status: "sent",
+      })
+      .select("id, body, created_at")
+      .single();
+
+    if (legacyInsertError || !insertedLegacy) {
+      console.error(LOG_PREFIX + " legacy insert error:", legacyInsertError?.message);
+      return NextResponse.json(
+        { error: "WhatsApp message sent but failed to log in inbox" },
+        { status: 200 },
+      );
+    }
+
+    inserted = insertedLegacy;
+  } else {
+    inserted = insertedAttempt;
   }
 
   if (conversationId) {

@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabaseAdmin, supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
+import {
+  assertBillingReadyForOutboundWithClient,
+  isBillingOutboundBlockedError,
+  OUTBOUND_BILLING_BLOCKED_MESSAGE,
+} from "@/lib/billing-outbound-gate";
 
 const CHANNEL = "website_chat";
 
@@ -47,6 +52,19 @@ export async function POST(request: NextRequest) {
       { error: "Contact not found or not a website chat contact" },
       { status: 404 },
     );
+  }
+
+  const db = getSupabaseAdmin() ?? supabase;
+  try {
+    await assertBillingReadyForOutboundWithClient(db, business.id as string, {
+      channel: "website_chat",
+      source: "chat/website/reply",
+    });
+  } catch (e) {
+    if (isBillingOutboundBlockedError(e)) {
+      return NextResponse.json({ error: OUTBOUND_BILLING_BLOCKED_MESSAGE }, { status: 402 });
+    }
+    throw e;
   }
 
   const { data: inserted, error: insertError } = await supabase

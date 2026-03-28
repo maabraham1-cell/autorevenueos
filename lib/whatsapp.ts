@@ -1,3 +1,5 @@
+import { assertBillingReadyForOutbound } from "@/lib/billing-outbound-gate";
+
 const WHATSAPP_API_BASE = "https://graph.facebook.com/v21.0";
 
 type SendWhatsAppTextParams = {
@@ -18,6 +20,15 @@ type SendWhatsAppTextParams = {
    * Optional per-business access token; if omitted we fall back to META_PAGE_ACCESS_TOKEN.
    */
   accessToken?: string | null;
+  /**
+   * If false, environment fallback credentials are blocked.
+   * Use false in production send paths to avoid cross-business leakage.
+   */
+  allowEnvFallback?: boolean;
+  businessId?: string | null;
+  contactId?: string | null;
+  recipientSource?: string | null;
+  isTestMode?: boolean;
 };
 
 /**
@@ -31,15 +42,16 @@ function toWhatsAppRecipient(phone: string): string {
 
 export async function sendWhatsAppTextMessage(params: SendWhatsAppTextParams): Promise<void> {
   const { text } = params;
+  const allowEnvFallback = params.allowEnvFallback === true;
   const toRaw = typeof params.to === "string" ? params.to.trim() : "";
   const to = toWhatsAppRecipient(toRaw);
 
   const phoneNumberIdFromParams = params.phoneNumberId && params.phoneNumberId.trim();
-  const phoneNumberIdFromEnv = process.env.META_WHATSAPP_PHONE_NUMBER_ID;
+  const phoneNumberIdFromEnv = allowEnvFallback ? process.env.META_WHATSAPP_PHONE_NUMBER_ID : null;
   const phoneNumberId = phoneNumberIdFromParams || phoneNumberIdFromEnv;
 
   const accessTokenFromParams = params.accessToken && params.accessToken.trim();
-  const accessTokenFromEnv = process.env.META_PAGE_ACCESS_TOKEN;
+  const accessTokenFromEnv = allowEnvFallback ? process.env.META_PAGE_ACCESS_TOKEN : null;
   const accessToken = accessTokenFromParams || accessTokenFromEnv;
 
   if (!phoneNumberId) {
@@ -54,18 +66,35 @@ export async function sendWhatsAppTextMessage(params: SendWhatsAppTextParams): P
     );
   }
 
+  if (params.businessId) {
+    await assertBillingReadyForOutbound(params.businessId, {
+      channel: "whatsapp",
+      source: "sendWhatsAppTextMessage",
+      recipient_source: params.recipientSource ?? null,
+    });
+  }
+
   // Explicit logging so we can distinguish test-number vs per-business flows.
   // NOTE: this does not log any secrets.
   const toDigitsPrefix = to.slice(0, 6) + "…";
   const isEnvPhoneIdFallback = !phoneNumberIdFromParams && !!phoneNumberIdFromEnv;
   const isEnvAccessTokenFallback = !accessTokenFromParams && !!accessTokenFromEnv;
+  const inferredTestMode =
+    process.env.MESSAGE_TEST_MODE === "true" || process.env.NODE_ENV !== "production";
 
   console.log("[whatsapp/send] sending text message", {
+    channel: "whatsapp",
+    business_id: params.businessId ?? null,
+    contact_id: params.contactId ?? null,
     to_digits_prefix: toDigitsPrefix,
+    recipient_source: params.recipientSource ?? "unknown",
+    phone_number_id_used: phoneNumberId,
     phone_number_id_source: phoneNumberIdFromParams ? "business.phone_number_id" : "env.META_WHATSAPP_PHONE_NUMBER_ID",
     access_token_source: accessTokenFromParams ? "business.meta_page_access_token" : "env.META_PAGE_ACCESS_TOKEN",
     is_env_phone_id_fallback: isEnvPhoneIdFallback,
     is_env_access_token_fallback: isEnvAccessTokenFallback,
+    allow_env_fallback: allowEnvFallback,
+    is_test_mode: params.isTestMode ?? inferredTestMode,
     // Heuristic: when we rely entirely on env-level credentials, we are most likely
     // in shared/test-number mode rather than a fully connected production WhatsApp number.
     is_likely_test_number_flow: isEnvPhoneIdFallback || isEnvAccessTokenFallback,
