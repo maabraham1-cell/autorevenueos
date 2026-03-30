@@ -69,16 +69,16 @@ export default function OperatorOverviewPage() {
               Refresh
             </button>
             <Link
-              href="/inbox"
+              href="/admin/customers"
               className="rounded-md border border-transparent bg-[#1E3A8A] px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-[#2563EB]"
             >
-              Inbox
+              All customers
             </Link>
             <Link
-              href="/admin/customers"
+              href="/admin"
               className="rounded-md border border-[#e6ebf1] bg-white px-3 py-1.5 text-sm font-medium text-[#0a2540] shadow-sm hover:bg-[#f6f9fc]"
             >
-              All customers
+              Admin tools
             </Link>
           </div>
         </div>

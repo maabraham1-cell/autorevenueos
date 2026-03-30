@@ -76,7 +76,7 @@ export default function MarketingPage() {
               </Link>
             </div>
             <p className="mt-4 text-xs text-slate-400">
-              Free to install. Only £3 per confirmed booking. Messages and leads are never billed.
+              Free to install. Add a card during setup to activate messaging. Only £3 per confirmed booking; messages and leads are never billed.
             </p>
           </div>
 
@@ -213,7 +213,7 @@ export default function MarketingPage() {
                 You miss the call. We catch the customer.
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                AutoRevenueOS instantly detects missed calls so no opportunity slips through unnoticed.
+                AutoRevenueOS detects missed calls and routes them into your recovery flow so no opportunity slips through unnoticed.
               </p>
             </motion.div>
             <motion.div
@@ -231,7 +231,7 @@ export default function MarketingPage() {
                 Instant reply. No delay.
               </p>
               <p className="mt-2 text-xs text-[#64748B]">
-                The moment you miss a call, we automatically send a message with your booking link. No chasing. No manual follow-up.
+                After setup is complete, we automatically send a message with your booking link when a call is missed. No chasing. No manual follow-up.
               </p>
             </motion.div>
             <motion.div

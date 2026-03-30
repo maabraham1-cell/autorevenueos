@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : isAdmin
       ? [
           { href: ADMIN_HOME_PATH, label: 'Overview' },
-          { href: '/inbox', label: 'Inbox' },
+          { href: '/admin', label: 'Admin' },
           { href: '/admin/customers', label: 'Customers' },
         ]
       : [

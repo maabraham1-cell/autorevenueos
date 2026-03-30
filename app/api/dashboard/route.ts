@@ -279,6 +279,7 @@ export async function GET(request: NextRequest) {
       currency_code: ((business as any).currency_code as string) ?? "GBP",
       locale: ((business as any).locale as string) ?? "en-GB",
       activation_status: ((business as any).activation_status as string) ?? "payment_required",
+      billing_status: ((business as any).billing_status as string) ?? "pending",
       recent_recoveries,
       recent_confirmed_bookings,
       recent_billing_events,

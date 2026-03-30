@@ -98,6 +98,7 @@ export async function middleware(req: NextRequest) {
   if (adminUser) {
     const operatorForbiddenPages = [
       "/dashboard",
+      "/inbox",
       "/settings",
       "/recoveries",
       "/setup",
@@ -110,7 +111,9 @@ export async function middleware(req: NextRequest) {
 
     const operatorForbiddenApis = [
       "/api/dashboard",
+      "/api/inbox",
       "/api/recoveries",
+      "/api/settings",
       "/api/setup",
       "/api/booking-integrations",
       "/api/billing",

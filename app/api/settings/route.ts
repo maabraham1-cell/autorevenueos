@@ -49,6 +49,11 @@ export async function GET(request: NextRequest) {
       auto_reply_template: ((business as any).auto_reply_template as string) ?? "",
       meta_page_id: ((business as any).meta_page_id as string) ?? "",
       meta_page_name: ((business as any).meta_page_name as string) ?? "",
+      whatsapp_phone_number_id:
+        ((business as any).whatsapp_phone_number_id as string) ?? "",
+      facebook_page_id: ((business as any).facebook_page_id as string) ?? "",
+      instagram_account_id:
+        ((business as any).instagram_account_id as string) ?? "",
       cost_per_lead: cpl,
       currency_code: ((business as any).currency_code as string) ?? "GBP",
       locale: ((business as any).locale as string) ?? "en-GB",

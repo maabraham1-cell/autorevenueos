@@ -27,10 +27,10 @@ export default function AdminPage() {
               Twilio pool (JSON)
             </a>
             <Link
-              href="/dashboard"
+              href="/operator"
               className="inline-flex items-center justify-center rounded-lg border border-[#E5E7EB] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F172A] shadow-sm transition-colors hover:bg-[#F8FAFC]"
             >
-              Back to dashboard
+              Back to operator overview
             </Link>
           </div>
         </div>

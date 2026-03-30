@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { getCurrentUserAndBusiness } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { isAdminRole } from "@/lib/roles";
 
 type InboxMessage = {
   id: string;
@@ -55,12 +56,19 @@ type ConversationAccumulator = {
 
 export async function GET(request: NextRequest) {
   try {
-    const { user, business } = await getCurrentUserAndBusiness(request);
+    const { user, business, role } = await getCurrentUserAndBusiness(request);
 
     if (!user) {
       return NextResponse.json(
         { error: "Not authenticated" },
         { status: 401 },
+      );
+    }
+
+    if (isAdminRole(role)) {
+      return NextResponse.json(
+        { error: "Not available for internal admin account." },
+        { status: 403 },
       );
     }
 

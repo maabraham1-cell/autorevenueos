@@ -48,6 +48,9 @@ type SettingsData = {
   auto_reply_template: string;
   meta_page_id: string;
   meta_page_name: string;
+  whatsapp_phone_number_id?: string;
+  facebook_page_id?: string;
+  instagram_account_id?: string;
   twilio_phone_number?: string;
   business_mobile?: string;
   acuity_api_key?: string;
@@ -119,6 +122,11 @@ function SettingsPageContent() {
       .replace(/{business_name}/g, businessName)
       .replace(/{booking_link}/g, bookingLink);
   })();
+  const billingReady = (form.billing_status ?? data?.billing_status ?? 'pending') === 'ready';
+  const messengerConnected = Boolean((form.meta_page_id ?? '').trim());
+  const instagramConnected = Boolean((form.instagram_account_id ?? '').trim());
+  const whatsappConnected =
+    Boolean((form.whatsapp_phone_number_id ?? '').trim()) && messengerConnected;
 
   const loadSettings = async () => {
     setLoading(true);
@@ -154,6 +162,9 @@ function SettingsPageContent() {
         auto_reply_template: settings.auto_reply_template ?? '',
         meta_page_id: settings.meta_page_id ?? '',
         meta_page_name: settings.meta_page_name ?? '',
+        whatsapp_phone_number_id: settings.whatsapp_phone_number_id ?? '',
+        facebook_page_id: settings.facebook_page_id ?? '',
+        instagram_account_id: settings.instagram_account_id ?? '',
         twilio_phone_number: settings.twilio_phone_number ?? '',
         business_mobile: settings.business_mobile ?? '',
         acuity_api_key: settings.acuity_api_key ?? '',
@@ -274,6 +285,10 @@ function SettingsPageContent() {
           location: String(loc ?? ''),
           auto_reply_template: String(form.auto_reply_template ?? ''),
           meta_page_id: String(form.meta_page_id ?? ''),
+          meta_page_name: String(form.meta_page_name ?? ''),
+          whatsapp_phone_number_id: String(form.whatsapp_phone_number_id ?? ''),
+          facebook_page_id: String(form.facebook_page_id ?? ''),
+          instagram_account_id: String(form.instagram_account_id ?? ''),
           twilio_phone_number: String(form.twilio_phone_number ?? ''),
           business_mobile: String(form.business_mobile ?? ''),
           acuity_api_key: String(form.acuity_api_key ?? ''),
@@ -309,6 +324,15 @@ function SettingsPageContent() {
         {success && (
           <div className="animate-fade-in-up mt-4 rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-3 text-sm text-[#166534]">
             Settings saved.
+          </div>
+        )}
+
+        {!noBusiness && !billingReady && (
+          <div className="animate-fade-in-up mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-medium">Add a payment method to activate messaging</p>
+            <p className="mt-1 text-amber-800">
+              Outbound messaging and automation stay blocked until billing is ready.
+            </p>
           </div>
         )}
 
@@ -465,7 +489,30 @@ function SettingsPageContent() {
               <div className="rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-4">
                 <h3 className="text-sm font-semibold text-[#0F172A]">Facebook &amp; Instagram messaging</h3>
                 <p className="mt-2 text-xs text-[#475569]">
-                  Connect your Facebook Page to receive messages in the Inbox and send auto-replies. Messaging is for <strong>leads and conversations only</strong> — you are not charged £3 for Facebook or Instagram messages. A £3 charge happens only when a <strong>confirmed booking</strong> is recorded from a trusted booking source (e.g. your booking system or calendar).
+                  Connect your Facebook Page to receive Messenger/Instagram messages in Inbox with AI suggestions and manual sends. Messaging is for <strong>leads and conversations only</strong> — you are not charged £3 for Facebook or Instagram messages. A £3 charge happens only when a <strong>confirmed booking</strong> is recorded from a trusted booking source (e.g. your booking system or calendar).
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-md border border-[#E5E7EB] bg-white px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">Messenger</p>
+                    <p className="mt-1 text-xs font-medium text-[#0F172A]">
+                      {messengerConnected ? "Connected" : "Not connected"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-[#E5E7EB] bg-white px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">Instagram</p>
+                    <p className="mt-1 text-xs font-medium text-[#0F172A]">
+                      {instagramConnected ? "Connected" : "Not connected"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-[#E5E7EB] bg-white px-3 py-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">WhatsApp</p>
+                    <p className="mt-1 text-xs font-medium text-[#0F172A]">
+                      {whatsappConnected ? "Connected" : "Not connected"}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] text-[#64748B]">
+                  Requires Meta app approval and connection.
                 </p>
                 {metaError && (
                   <div className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
@@ -477,7 +524,7 @@ function SettingsPageContent() {
                     <p className="text-sm font-medium text-[#0F172A]">
                       Connected as <span className="font-semibold text-[#16A34A]">{(form.meta_page_name ?? data?.meta_page_name ?? 'Facebook Page').trim() || 'Facebook Page'}</span>
                     </p>
-                    <p className="mt-1 text-[11px] text-[#64748B]">Inbox and auto-replies are linked to this Page.</p>
+                    <p className="mt-1 text-[11px] text-[#64748B]">Inbox suggestions and manual sends are linked to this Page.</p>
                     <button
                       type="button"
                       onClick={async () => {
@@ -774,6 +821,12 @@ function SettingsPageContent() {
               <p className="mt-1 whitespace-pre-wrap text-sm text-[#0F172A]">
                 {previewText}
               </p>
+            </div>
+            <div className="mt-3 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 text-xs text-[#475569]">
+              <p className="font-semibold text-[#0F172A]">AI behavior today</p>
+              <p className="mt-1">WhatsApp, Messenger, Instagram, SMS, website chat inbound: AI suggestion + draft support.</p>
+              <p className="mt-1">Outbound: manual send from Inbox (or Send AI reply) after review.</p>
+              <p className="mt-1">Automatic send from inbound webhooks is not enabled in this workspace.</p>
             </div>
           </div>
         </section>

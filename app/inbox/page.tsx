@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSessionRoleFromApi } from "@/lib/client-profile-role";
 import { OperatorWorkspacePanel } from "@/components/operator/OperatorWorkspacePanel";
+import { OUTBOUND_BILLING_BLOCKED_MESSAGE } from "@/lib/billing-outbound-gate";
 import {
   StatusBadge,
   SummaryPill,
@@ -106,6 +107,7 @@ function InboxContent() {
   const [error, setError] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
+  const [billingReady, setBillingReady] = useState(true);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<ContactDetails | null>(null);
   const [savingContact, setSavingContact] = useState(false);
@@ -287,6 +289,23 @@ function InboxContent() {
   const canReply =
     !!selectedConversation?.contact_id && (isWebsiteChat || isMetaChannel);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (isAdmin) return;
+    void fetch("/api/settings")
+      .then((r) => r.json().catch(() => ({})))
+      .then((j) => {
+        if (cancelled) return;
+        setBillingReady(((j as { billing_status?: string }).billing_status ?? "pending") === "ready");
+      })
+      .catch(() => {
+        if (!cancelled) setBillingReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
   async function sendReplyText(text: string) {
     const trimmed = text.trim();
     if (!trimmed || !canReply || sendingReply) return;
@@ -319,7 +338,15 @@ function InboxContent() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Failed to send");
+        const errorText = (data as { error?: string }).error ?? "Failed to send";
+        if (
+          res.status === 402 ||
+          errorText.toLowerCase().includes("payment method") ||
+          errorText.toLowerCase().includes("billing")
+        ) {
+          throw new Error("Add a payment method to activate messaging");
+        }
+        throw new Error(errorText);
       }
       const sent = (await res.json()) as InboxMessage;
       setReplyDraft("");
@@ -358,7 +385,7 @@ function InboxContent() {
             </h1>
             <p className="mt-2 text-sm text-[#475569]">
               {isAdmin
-                ? "Internal operator view—threads across businesses."
+                ? "Internal admin access is not available in Inbox."
                 : "Recovered conversations—follow up with interested customers."}
             </p>
           </div>
@@ -375,6 +402,18 @@ function InboxContent() {
         {error && (
           <div className="animate-fade-in-up mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
             {error}
+          </div>
+        )}
+
+        {!isAdmin && !billingReady && (
+          <div className="animate-fade-in-up mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+            <p className="font-medium">Add a payment method to activate messaging</p>
+            <p className="mt-1 text-amber-800">
+              Outbound sends and AI-assisted replies are blocked until billing is ready.
+              <a href="/settings" className="ml-1 font-semibold underline">
+                Open settings
+              </a>
+            </p>
           </div>
         )}
 
@@ -705,7 +744,7 @@ function InboxContent() {
                     </section>
                   )}
 
-                  {/* AI suggestion panel */}
+                  {/* AI assistant panel (suggestion / draft / manual send) */}
                   {selectedConversation?.ai && (
                     <section className="mt-2 mb-3 rounded-2xl border border-[#E5E7EB] bg-white p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -845,9 +884,14 @@ function InboxContent() {
                       {replyError && (
                         <p className="mb-2 text-xs text-red-600">{replyError}</p>
                       )}
+                      {!billingReady && (
+                        <p className="mb-2 text-xs text-amber-700">
+                          {OUTBOUND_BILLING_BLOCKED_MESSAGE}
+                        </p>
+                      )}
                       {selectedConversation?.ai?.reply && (
                         <p className="mb-2 text-xs text-[#64748B]">
-                          AI suggested reply (editable below)
+                          AI suggestion (review/edit before sending)
                         </p>
                       )}
                       {selectedConversation?.ai && (
@@ -873,7 +917,7 @@ function InboxContent() {
                                 if (!selectedConversation.ai?.reply) return;
                                 await sendReplyText(selectedConversation.ai.reply);
                               }}
-                              disabled={sendingReply}
+                              disabled={sendingReply || !billingReady}
                               className="rounded-full bg-[#1E3A8A] px-3 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               Send AI reply
@@ -970,12 +1014,12 @@ function InboxContent() {
                               : "Reply to website visitor…"
                           }
                           className="min-w-0 flex-1 rounded-xl border border-[#E5E7EB] px-3 py-2.5 text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]"
-                          disabled={sendingReply}
+                          disabled={sendingReply || !billingReady}
                         />
                         <div className="flex flex-col items-end gap-1">
                           <button
                             type="submit"
-                            disabled={!replyDraft.trim() || sendingReply}
+                            disabled={!replyDraft.trim() || sendingReply || !billingReady}
                             className="shrink-0 rounded-xl bg-[#1E3A8A] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#2563EB] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {sendingReply ? "Sending…" : "Send"}
@@ -983,7 +1027,9 @@ function InboxContent() {
                         </div>
                       </div>
                       <p className="mt-1.5 text-[11px] text-[#64748B]">
-                        {isWhatsApp
+                        {!billingReady
+                          ? "Add a payment method to activate messaging."
+                          : isWhatsApp
                           ? "Reply instantly in WhatsApp and send customers your booking link."
                           : "Replies appear in the visitor&apos;s chat widget within a few seconds."}
                       </p>

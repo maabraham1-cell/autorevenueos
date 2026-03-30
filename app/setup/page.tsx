@@ -187,6 +187,14 @@ export default function SetupPage() {
           <p className="mt-1 text-sm text-[#64748B]">
             Follow these steps to activate billing, turn on missed-call recovery, and connect your scheduling system.
           </p>
+          {!billingReady && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p className="font-medium">Add a payment method to activate messaging</p>
+              <p className="mt-1 text-amber-800">
+                Outbound messaging and automation stay blocked until billing is ready.
+              </p>
+            </div>
+          )}
           <div className="mt-4 flex flex-col gap-2 text-xs sm:text-sm">
             <div className="flex items-center gap-2">
               <button

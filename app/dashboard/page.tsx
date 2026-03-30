@@ -24,6 +24,7 @@ type DashboardResponse = {
   currency_code?: string;
   locale?: string;
   activation_status?: string;
+  billing_status?: string;
   recent_recoveries: {
     id: string;
     created_at: string;
@@ -203,7 +204,7 @@ export default function DashboardPage() {
               Track recovered revenue, recovered enquiries, and bookings across your pipeline.
             </p>
             <p className="mt-1 text-xs text-[#94A3B8]">
-              Messenger Connected • Recovery Engine Active • Webhooks Receiving Messages
+              Messaging and automation require active billing and channel setup.
             </p>
           </div>
           {loading && (
@@ -238,7 +239,7 @@ export default function DashboardPage() {
               <>
                 <p className="font-medium">Complete activation</p>
                 <p className="mt-1 text-amber-800">
-                  Add your card and we will provision your phone recovery number. You&apos;ll only be charged £3 per confirmed booking from your scheduling system—no upfront charge.
+                  Add a payment method to activate messaging. Then we will provision your phone recovery number. You&apos;ll only be charged £3 per confirmed booking from your scheduling system—no upfront charge.
                 </p>
                 <a href="/settings" className="mt-3 inline-block rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-700">
                   Continue in Settings

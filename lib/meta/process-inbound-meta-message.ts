@@ -46,7 +46,7 @@ function normalizeTextBody(textBody: string | null | undefined): string | null {
  * - Stores AI output into `conversations.metadata.ai`
  * - Optionally creates `conversations.metadata.booking_draft`
  * - Inserts attributed booking links when AI requests `send_booking_link`
- * - Optionally performs safe auto-send when `business.ai_auto_send_enabled` is enabled
+ * - Does not auto-send outbound replies from webhook ingestion
  *
  * Note: This does not confirm bookings, guess availability or pricing, or trigger billing.
  */
